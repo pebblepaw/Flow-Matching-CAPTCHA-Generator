@@ -1,13 +1,41 @@
 [project]
 name = "cs4243"
-version = "0.1.0"
+version = "1.0.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
+    "matplotlib>=3.10.7",
     "numpy>=2.3.4",
     "opencv-python>=4.11.0.86",
     "pillow>=12.0.0",
-    "torch>=2.9.0",
-    "torchvision>=0.24.0",
+]
+
+[project.optional-dependencies]
+cpu = [
+  "torch>=2.9.0",
+]
+cu129 = [
+  "torch>=2.9.0",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu",  extra = "cpu"  },
+  { index = "pytorch-cu129", extra = "cu129" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[tool.uv]
+conflicts = [
+  [ { extra = "cpu" }, { extra = "cu129" } ]
 ]
