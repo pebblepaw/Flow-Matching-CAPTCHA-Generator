@@ -10,26 +10,27 @@ dependencies = [
     "opencv-python>=4.11.0.86",
     "pillow>=12.0.0",
     "scipy>=1.14.0",
+    "tqdm>=4.66.0",
 ]
 
 [project.optional-dependencies]
 cpu = [
-  "torch>=2.9.0",
-  "torchvision>=0.24.0",
+  "torch",
+  "torchvision",
 ]
-cu129 = [
-  "torch>=2.9.0",
-  "torchvision>=0.24.0",
+cu121 = [
+  "torch",
+  "torchvision",
 ]
 
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu",  extra = "cpu"  },
-  { index = "pytorch-cu129", extra = "cu129" },
+  { index = "pytorch-cu121", extra = "cu121" },
 ]
 torchvision = [
   { index = "pytorch-cpu",  extra = "cpu"  },
-  { index = "pytorch-cu129", extra = "cu129" },
+  { index = "pytorch-cu121", extra = "cu121" },
 ]
 
 [[tool.uv.index]]
@@ -38,11 +39,11 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu129"
-url = "https://download.pytorch.org/whl/cu129"
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
 [tool.uv]
 conflicts = [
-  [ { extra = "cpu" }, { extra = "cu129" } ]
+  [ { extra = "cpu" }, { extra = "cu121" } ]
 ]
