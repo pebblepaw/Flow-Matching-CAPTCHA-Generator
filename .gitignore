@@ -8,7 +8,32 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+env/
 
 # Data files
 data/raw/*
 data/processed/*
+
+# Model weights and checkpoints
+*.pth
+*.pt
+*.ckpt
+models/
+
+# Visualization outputs
+pipeline_visualization.png
+prediction_results.png
+*.png
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+nul
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
