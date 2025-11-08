@@ -40,6 +40,7 @@ A deep learning project for recognizing alphanumeric characters in CAPTCHA image
 **Windows (with NVIDIA GPU):**
 ```bash
 uv sync --extra cu121
+# or cu129, depending on your GPU
 ```
 
 **Mac/Linux (CPU only):**
@@ -47,58 +48,32 @@ uv sync --extra cu121
 uv sync --extra cpu
 ```
 
-**Mac/Linux (with NVIDIA GPU):**
-```bash
-uv sync --extra cu121
-```
-
-> **Note**: CUDA 12.1 is used because CUDA 12.9 doesn't have Windows wheels yet.
-> Mac users with Apple Silicon should use CPU mode (PyTorch has MPS support but not configured here).
-
 ## Usage
 
 ### 1. Train the Model
 
 ```bash
-# Windows
-.venv\Scripts\python.exe model_trainer.py
-
-# Mac/Linux
-source .venv/bin/activate
-python model_trainer.py
+uv run python -m src.recognition.model_trainer
 ```
 
 This will:
 - Load CAPTCHA images from `data/raw/train/`
 - Apply preprocessing and tokenization
-- Train for 50 epochs on GPU (if available)
-- Save the best model to `char_recognizer.pth`
+- Train for 50 epochs
+- Save the best models to `checkpoints/character_cnn/*.pth`
 
 **Training time**: ~15 minutes on RTX 4060 Laptop GPU
 
 ### 2. Evaluate the Model
 
 ```bash
-# Windows
-.venv\Scripts\python.exe model_result_visualizer.py
-
-# Mac/Linux
-python model_result_visualizer.py
+uv run python -m src.recognition.model_evaluator
 ```
 
 This will:
 - Test the model on random CAPTCHA images
 - Display predictions vs ground truth
 - Calculate accuracy metrics
-- Generate visualization: `prediction_results.png`
-
-### 3. Visualize Pipeline
-
-```bash
-python visualize_tokenization_pipeline.py
-```
-
-Shows the preprocessing and tokenization steps visually.
 
 ## Model Performance
 
@@ -123,20 +98,12 @@ Each team member should:
 
 ## Cross-Platform Notes
 
-- **Windows**: Uses `\` for paths, activate with `.venv\Scripts\activate`
-- **Mac/Linux**: Uses `/` for paths, activate with `source .venv/bin/activate`
 - The code handles path differences automatically using `pathlib.Path`
 
 ## Requirements
 
-See `pyproject.toml` for full dependency list. Key dependencies:
-- PyTorch 2.5.1
-- OpenCV
-- NumPy
-- Matplotlib
-- SciPy
-- tqdm
+See `pyproject.toml` for full dependency list
 
 ## License
 
-[Your License Here]
+MIT
