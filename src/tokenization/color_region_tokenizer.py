@@ -684,15 +684,16 @@ class ColorRegionTokenizer:
 
         return regions
 
-    def tokenize(self, image: np.ndarray, return_mask: bool = False, use_color_segmentation: bool = True, remove_other_colors: bool = True) -> list[MatLike] | tuple[list[MatLike], MatLike]:
+    def tokenize(self, image: np.ndarray, return_mask: bool = False, use_color_segmentation: bool = False, remove_other_colors: bool = False) -> list[MatLike] | tuple[list[MatLike], MatLike]:
         """
         Tokenize image into character regions.
 
         Args:
             image: Input RGB image
             return_mask: Whether to return foreground mask
-            use_color_segmentation: If True, use color-based connected components with flood fill
-            remove_other_colors: If True, remove pixels with different colors from each token
+            use_color_segmentation: If True, use color-based connected components with flood fill (experimental)
+                                   If False (default), use original split/merge method (better performance)
+            remove_other_colors: If True, remove pixels with different colors from each token (only used with color segmentation)
         """
         fg_mask = self.create_foreground_mask(image)
 

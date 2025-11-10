@@ -136,9 +136,177 @@ def color_voting_remove_black_hairline(image: MatLike, black_threshold: int = 50
     # Use color voting with 2 iterations (proven effective)
     return color_voting_propagation(image, mask=black_mask, iterations=2)
 
-def color_voting_then_inpainting(image: MatLike, black_threshold: int = 50) -> MatLike:
+def brighten_non_black_pixels(image: MatLike, black_threshold: int = 50, brightness_boost: int = 30) -> MatLike:
+    """
+    Increase the brightness (Value in HSV) of non-black pixels.
+
+    This can help protect dark-but-not-black characters from being treated
+    as hairlines during inpainting.
+
+    Args:
+        image: BGR image
+        black_threshold: Pixels darker than this are considered black
+        brightness_boost: Amount to increase Value (0-255, recommended: 20-40)
+
+    Returns:
+        Image with brightened non-black pixels
+    """
+    # Convert to HSV
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+
+    # Identify non-black pixels
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    non_black_mask = gray >= black_threshold
+
+    # Boost the Value channel for non-black pixels
+    v_boosted = v.copy().astype(np.int16)
+    v_boosted[non_black_mask] = np.clip(v_boosted[non_black_mask] + brightness_boost, 0, 255)
+    v_boosted = v_boosted.astype(np.uint8)
+
+    # Merge back and convert to BGR
+    hsv_boosted = cv2.merge([h, s, v_boosted])
+    result = cv2.cvtColor(hsv_boosted, cv2.COLOR_HSV2BGR)
+
+    return result
+
+
+def should_use_inpainting(image: MatLike, black_threshold: int = 50) -> bool:
+    """
+    Determine if inpainting is safe to use on this image.
+
+    Inpainting should be avoided when there are legitimate black/dark characters,
+    as it will smear them. It's safe when:
+    1. Very few black pixels remain (mostly colored characters)
+    2. Black pixels are thin and scattered (hairlines, not characters)
+
+    Args:
+        image: BGR image
+        black_threshold: Pixels darker than this are considered black
+
+    Returns:
+        True if inpainting is safe, False otherwise
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    black_mask = (gray < black_threshold)
+
+    total_pixels = gray.shape[0] * gray.shape[1]
+    black_pixel_count = np.sum(black_mask)
+    black_percentage = (black_pixel_count / total_pixels) * 100
+
+    # If more than 5% of pixels are black, there might be black characters
+    if black_percentage > 5.0:
+        return False
+
+    # Check if black pixels form large connected components (characters)
+    # vs small scattered ones (hairlines)
+    from scipy.ndimage import label as scipy_label
+    labeled, num_components = scipy_label(black_mask)
+
+    if num_components == 0:
+        return True  # No black pixels, safe to inpaint
+
+    # Check size of largest black component
+    component_sizes = []
+    for i in range(1, num_components + 1):
+        size = np.sum(labeled == i)
+        component_sizes.append(size)
+
+    if len(component_sizes) > 0:
+        largest_component = max(component_sizes)
+        # If largest black component is more than 100 pixels, it's likely a character
+        if largest_component > 100:
+            return False
+
+    return True
+
+
+def color_voting_then_inpainting(
+    image: MatLike,
+    black_threshold: int = 50,
+    inpaint_radius: int = 2,
+    adaptive: bool = True
+) -> MatLike:
+    """
+    Apply color voting followed by inpainting for hairline removal.
+
+    With adaptive=True, automatically skips inpainting if it would likely
+    smear legitimate black characters.
+
+    Args:
+        image: BGR image
+        black_threshold: Pixels darker than this are considered black
+        inpaint_radius: Radius for inpainting (smaller = weaker effect, default: 2)
+        adaptive: If True, only apply inpainting when safe (recommended)
+
+    Returns:
+        Image with hairlines removed using both methods (or just color voting if unsafe)
+    """
     result_voting = color_voting_remove_black_hairline(image, black_threshold=black_threshold)
-    result_inpainting = inpainting_remove_black_hairline(result_voting, black_threshold=black_threshold)
+
+    # Check if inpainting is safe to apply
+    if adaptive and not should_use_inpainting(result_voting, black_threshold=black_threshold):
+        # Skip inpainting, just return color voting result
+        return result_voting
+
+    result_inpainting = inpainting_remove_black_hairline(
+        result_voting,
+        black_threshold=black_threshold,
+        inpaint_radius=inpaint_radius
+    )
+    return result_inpainting
+
+
+def color_voting_brighten_then_inpaint(
+    image: MatLike,
+    black_threshold: int = 50,
+    inpaint_radius: int = 2,
+    brightness_boost: int = 30,
+    brighten_threshold: int = None,
+    inpaint_threshold: int = None
+) -> MatLike:
+    """
+    Apply color voting, brighten non-black pixels, then inpaint.
+
+    This approach protects dark characters by brightening them before inpainting,
+    so they won't be treated as black hairlines.
+
+    Args:
+        image: BGR image
+        black_threshold: Default threshold for both brightening and inpainting (default: 50)
+        inpaint_radius: Radius for inpainting (smaller = weaker effect, default: 2)
+        brightness_boost: Amount to increase brightness of non-black pixels (default: 30)
+        brighten_threshold: Threshold for identifying pixels to brighten (if None, uses black_threshold)
+                           Higher values = more pixels get brightened
+        inpaint_threshold: Threshold for inpainting (if None, uses black_threshold)
+                          Lower values = fewer pixels get inpainted (more conservative)
+
+    Returns:
+        Image with hairlines removed using brightening + inpainting
+    """
+    # Use separate thresholds if provided, otherwise fall back to black_threshold
+    brighten_thresh = brighten_threshold if brighten_threshold is not None else black_threshold
+    inpaint_thresh = inpaint_threshold if inpaint_threshold is not None else black_threshold
+
+    # Step 1: Color voting to remove hairlines
+    result_voting = color_voting_remove_black_hairline(image, black_threshold=black_threshold)
+
+    # Step 2: Brighten non-black pixels to protect them from inpainting
+    # Use higher threshold to catch more dark pixels
+    result_brightened = brighten_non_black_pixels(
+        result_voting,
+        black_threshold=brighten_thresh,
+        brightness_boost=brightness_boost
+    )
+
+    # Step 3: Inpaint (only truly black pixels will be affected)
+    # Use lower threshold to be more conservative
+    result_inpainting = inpainting_remove_black_hairline(
+        result_brightened,
+        black_threshold=inpaint_thresh,
+        inpaint_radius=inpaint_radius
+    )
+
     return result_inpainting
 
 # Smoke Test for the hairline removal pipeline
