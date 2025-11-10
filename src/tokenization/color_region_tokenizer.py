@@ -145,113 +145,87 @@ class ColorRegionTokenizer:
         """
         Remove secondary colors from a token, keeping only the most dominant color.
 
-        Strategy:
-        1. Find all non-white pixels
-        2. Find the most common color (by pixel count)
-        3. Remove pixels that differ from dominant color
-
-        Uses OR logic:
-        - Different hue OR different brightness → remove pixel
+        Uses HSV color space to identify and remove pixels that differ from the
+        dominant color. Only removes small connected components to avoid hollowing
+        out characters with interior gaps (like O, 0, Q, 8).
 
         Args:
             token: Input token image (RGB)
-            white_value: Threshold for considering a pixel as white/background (default: 255)
-            hue_threshold: Max difference in HSV Hue channel (default: 5, out of 180)
-            value_threshold: Max difference in HSV Value channel (default: 100, out of 255)
+            white_value: Threshold for white/background pixels (default: 255)
+            hue_threshold: Max HSV Hue difference from dominant color (default: 5, out of 180)
+            value_threshold: Max HSV Value difference from dominant color (default: 100, out of 255)
 
         Returns:
             Cleaned token with only the dominant color preserved
         """
-        h, w = token.shape[:2]
         result = token.copy()
-
-        # Create foreground mask (non-white pixels)
         gray = cv2.cvtColor(token, cv2.COLOR_RGB2GRAY)
         fg_mask = gray < (white_value - 10)
 
         if np.sum(fg_mask) == 0:
             return result
 
-        # Get all foreground pixels
         fg_pixels = token[fg_mask]
-
         if len(fg_pixels) == 0:
             return result
 
-        # Find the most common color by clustering similar colors
-        # We need to group similar colors first, then pick the most common group
+        # Find dominant color by clustering similar colors
         visited = np.zeros(len(fg_pixels), dtype=bool)
         color_clusters = []
-
-        # Simple color clustering with a generous threshold (group similar colors)
-        color_similarity_threshold = 40  # RGB distance
+        color_similarity_threshold = 40
 
         for i in range(len(fg_pixels)):
             if visited[i]:
                 continue
-
             pixel_color = fg_pixels[i]
-
-            # Find all pixels with similar color (vectorized)
             distances = np.linalg.norm(fg_pixels.astype(float) - pixel_color.astype(float), axis=1)
             similar = distances < color_similarity_threshold
-
-            # Mark as visited
             visited[similar] = True
-
-            # Get the cluster's representative color (median)
             cluster_pixels = fg_pixels[similar]
             cluster_color = np.median(cluster_pixels, axis=0).astype(np.uint8)
-
-            # Count pixels in this cluster
             pixel_count = np.sum(similar)
-
             color_clusters.append((cluster_color, pixel_count))
 
         if len(color_clusters) == 0:
             return result
 
-        # Sort by pixel count - largest cluster is the dominant color
         color_clusters.sort(key=lambda x: x[1], reverse=True)
         dominant_color = color_clusters[0][0]
 
-        # Convert dominant color to HSV to get its Hue and Value
         dominant_hsv = cv2.cvtColor(dominant_color.reshape(1, 1, 3), cv2.COLOR_RGB2HSV)[0, 0]
         dominant_hue = dominant_hsv[0]
         dominant_saturation = dominant_hsv[1]
         dominant_value = dominant_hsv[2]
 
-        # Convert entire token to HSV
         token_hsv = cv2.cvtColor(token, cv2.COLOR_RGB2HSV)
         token_hue = token_hsv[:, :, 0]
         token_saturation = token_hsv[:, :, 1]
         token_value = token_hsv[:, :, 2]
 
-        # For very low saturation colors (near grayscale), don't filter by hue
-        # because hue is unreliable for grayscale colors
         is_grayscale_dominant = dominant_saturation < 30
 
         if is_grayscale_dominant:
-            # For grayscale dominant color, keep all low-saturation pixels
-            # Also check value similarity for brightness matching
             value_diff = np.abs(token_value.astype(float) - dominant_value)
             dissimilar_mask = ((token_saturation > 50) | (value_diff > value_threshold)) & fg_mask
         else:
-            # For colored pixels, filter by both Hue AND Value similarity
-            # Handle circular nature of Hue (0 and 180 are close in color wheel)
             hue_diff = np.abs(token_hue.astype(float) - dominant_hue)
-            # Wrap around for circular hue distance
             hue_diff = np.minimum(hue_diff, 180 - hue_diff)
-
-            # Check value difference (brightness)
             value_diff = np.abs(token_value.astype(float) - dominant_value)
-
-            # Remove if EITHER hue is too different OR value is too different
             dissimilar_mask = ((hue_diff > hue_threshold) | (value_diff > value_threshold)) & fg_mask
 
-        # Set dissimilar pixels to white
-        result[dissimilar_mask] = [255, 255, 255]
+        # Only remove small dissimilar components (overlaps)
+        # Keep large components (legitimate character features like hollow interiors)
+        from scipy.ndimage import label as scipy_label
+        labeled, num_components = scipy_label(dissimilar_mask)
+        fg_count = np.sum(fg_mask)
 
+        for comp_id in range(1, num_components + 1):
+            comp_mask = (labeled == comp_id)
+            comp_size = np.sum(comp_mask)
+            if comp_size > 0.3 * fg_count:
+                dissimilar_mask = dissimilar_mask & ~comp_mask
+
+        result[dissimilar_mask] = [255, 255, 255]
         return result
 
     def extract_connected_components_by_color(
