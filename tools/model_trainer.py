@@ -19,9 +19,9 @@ import string
 from tqdm import tqdm
 
 # Import preprocessing and tokenization
-from preprocessing.hairline_removal import color_voting_propagation
-from tokenization.color_region_tokenizer import ColorRegionTokenizer
-from model_structure import CharacterCNN
+from src.preprocessing.hairline_removal import color_voting_propagation
+from src.tokenization.color_region_tokenizer import ColorRegionTokenizer
+from src.recognition.model.character_cnn import CharacterCNN
 
 
 class CaptchaCharacterDataset(Dataset):

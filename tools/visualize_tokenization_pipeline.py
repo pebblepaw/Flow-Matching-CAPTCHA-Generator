@@ -24,12 +24,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from typing import List, Tuple
 
-from preprocessing.hairline_removal import (
+from src.preprocessing.hairline_removal import (
     color_voting_propagation,
     inpainting_removal,
     adaptive_hairline_removal
 )
-from tokenization.color_region_tokenizer import ColorRegionTokenizer
+from src.tokenization.color_region_tokenizer import ColorRegionTokenizer
 
 
 def get_random_images(train_dir: str, count: int) -> List[Path]:
