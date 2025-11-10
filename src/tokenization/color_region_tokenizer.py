@@ -5,6 +5,7 @@ Extracts colored foreground patches as tokens, ignoring white background and bla
 """
 
 import cv2
+from cv2.typing import MatLike
 import numpy as np
 from typing import List, Tuple, Dict, Optional
 from scipy.ndimage import label as scipy_label
@@ -38,9 +39,9 @@ class ColorRegionTokenizer:
         self.split_wide_regions = split_wide_regions
 
     def create_foreground_mask(self, image: np.ndarray) -> np.ndarray:
-        hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         r, g, b = image[:, :, 0], image[:, :, 1], image[:, :, 2]
 
         is_white = (v > 240) & (s < 10)
@@ -438,7 +439,7 @@ class ColorRegionTokenizer:
         x, y, w, h = bbox
         region = image[y:y+h, x:x+w, :]
 
-        hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
+        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
         s = hsv[:, :, 1]
 
         colored_mask = s > 20
@@ -529,7 +530,7 @@ class ColorRegionTokenizer:
             region = image[y:y+h, x:x+w, :]
             region_mask = fg_mask[y:y+h, x:x+w]
 
-            hsv_region = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
+            hsv_region = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
             hue = hsv_region[:, :, 0]
             sat = hsv_region[:, :, 1]
 
@@ -683,7 +684,7 @@ class ColorRegionTokenizer:
 
         return regions
 
-    def tokenize(self, image: np.ndarray, return_mask: bool = False, use_color_segmentation: bool = True, remove_other_colors: bool = True):
+    def tokenize(self, image: np.ndarray, return_mask: bool = False, use_color_segmentation: bool = True, remove_other_colors: bool = True) -> list[MatLike] | tuple[list[MatLike], MatLike]:
         """
         Tokenize image into character regions.
 
@@ -801,7 +802,6 @@ if __name__ == "__main__":
     for filename in sample_files:
         img_path = os.path.join(train_dir, filename)
         img = cv2.imread(img_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         label = filename.split('-')[0]
         tokens = tokenizer.tokenize(img)
 

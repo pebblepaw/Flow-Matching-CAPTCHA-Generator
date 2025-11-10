@@ -1,10 +1,11 @@
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 from typing import Tuple, Optional
-import string
+from src.config import IDX_TO_CHAR
+
+from torch.utils.data import DataLoader
 
 
 class CharacterCNN(nn.Module):
@@ -57,10 +58,6 @@ class CharacterCNN(nn.Module):
             nn.Linear(512, num_classes)
         )
 
-        # Character mapping (index to character)
-        self.idx_to_char = string.digits + string.ascii_uppercase  # '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        self.char_to_idx = {char: idx for idx, char in enumerate(self.idx_to_char)}
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the network.
@@ -76,7 +73,7 @@ class CharacterCNN(nn.Module):
         x = self.fc_layers(x)
         return x
 
-    def predict_char(self, x: torch.Tensor, return_confidence: bool = True) -> Tuple[str, float]:
+    def predict_char(self, x: torch.Tensor, return_confidence: bool = True) -> Tuple[str, float] | str:
         """
         Predict character from input image with confidence score.
 
@@ -92,122 +89,11 @@ class CharacterCNN(nn.Module):
             logits = self.forward(x)
             probabilities = torch.softmax(logits, dim=1)
             confidence, predicted_idx = torch.max(probabilities, dim=1)
-            predicted_char = self.idx_to_char[predicted_idx.item()]
+            predicted_char = IDX_TO_CHAR[int(predicted_idx.item())]
 
             if return_confidence:
                 return predicted_char, confidence.item()
             return predicted_char
-
-
-class CharacterDataset(Dataset):
-    """
-    Dataset class for character images.
-    """
-
-    def __init__(self, images, labels, transform=None):
-        """
-        Args:
-            images: List or array of images
-            labels: List or array of character labels
-            transform: Optional transforms to apply to images
-        """
-        self.images = images
-        self.labels = labels
-        self.transform = transform
-
-        # Character mapping
-        self.idx_to_char = string.digits + string.ascii_uppercase
-        self.char_to_idx = {char: idx for idx, char in enumerate(self.idx_to_char)}
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        image = self.images[idx]
-        label = self.labels[idx]
-
-        if self.transform:
-            image = self.transform(image)
-
-        # Convert character label to index
-        if isinstance(label, str):
-            label = self.char_to_idx[label.upper()]
-
-        return image, label
-
-
-def get_data_transforms(image_size: Tuple[int, int] = (32, 32)):
-    """
-    Get data augmentation transforms for training and validation.
-
-    Args:
-        image_size: Target image size (height, width)
-
-    Returns:
-        Tuple of (train_transform, val_transform)
-    """
-    train_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize(image_size),
-        transforms.RandomRotation(10),  # Slight rotation for robustness
-        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Small translations
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])  # Normalize to [-1, 1]
-    ])
-
-    val_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize(image_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5])
-    ])
-
-    return train_transform, val_transform
-
-
-def create_dataloaders(
-    train_images,
-    train_labels,
-    val_images,
-    val_labels,
-    batch_size: int = 64,
-    num_workers: int = 0
-) -> Tuple[DataLoader, DataLoader]:
-    """
-    Create training and validation dataloaders.
-
-    Args:
-        train_images: Training images
-        train_labels: Training labels
-        val_images: Validation images
-        val_labels: Validation labels
-        batch_size: Batch size for training
-        num_workers: Number of workers for data loading
-
-    Returns:
-        Tuple of (train_loader, val_loader)
-    """
-    train_transform, val_transform = get_data_transforms()
-
-    train_dataset = CharacterDataset(train_images, train_labels, transform=train_transform)
-    val_dataset = CharacterDataset(val_images, val_labels, transform=val_transform)
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers
-    )
-
-    return train_loader, val_loader
-
 
 def train_epoch(
     model: nn.Module,
@@ -307,6 +193,7 @@ def train_model(
     model: nn.Module,
     train_loader: DataLoader,
     val_loader: DataLoader,
+    model_save_path: Path,
     num_epochs: int = 50,
     learning_rate: float = 0.001,
     device: Optional[torch.device] = None
@@ -318,10 +205,13 @@ def train_model(
         model: The model to train
         train_loader: Training dataloader
         val_loader: Validation dataloader
+        model_save_path: Path to save the model
         num_epochs: Number of training epochs
         learning_rate: Learning rate for optimizer
         device: Device to train on (defaults to GPU if available)
     """
+    if not model_save_path.exists():
+        model_save_path.mkdir(parents=True, exist_ok=True)
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -331,9 +221,9 @@ def train_model(
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    # Learning rate scheduler
+    # Learning rate scheduler (dynamic learning rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=5, verbose=True
+        optimizer, mode='max', factor=0.5, patience=5
     )
 
     best_val_acc = 0.0
@@ -359,7 +249,8 @@ def train_model(
         # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), 'best_char_cnn.pth')
+            model_save_name = f"best_model_epoch{epoch+1:03d}_val_acc{val_acc:.4f}.pth"
+            torch.save(model.state_dict(), model_save_path / model_save_name)
             print(f"  >>> Saved best model (Val Acc: {val_acc:.4f})")
         print("-" * 60)
 
@@ -380,8 +271,8 @@ if __name__ == "__main__":
 
     # Print character mapping
     print("\nCharacter Mapping:")
-    print(f"Classes: {model.idx_to_char}")
-    print(f"Total classes: {len(model.idx_to_char)}")
+    print(f"Classes: {IDX_TO_CHAR}")
+    print(f"Total classes: {len(IDX_TO_CHAR)}")
 
     # Test forward pass with dummy input
     dummy_input = torch.randn(1, 1, 32, 32)  # (batch_size, channels, height, width)
