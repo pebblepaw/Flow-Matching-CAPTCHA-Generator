@@ -309,6 +309,109 @@ def color_voting_brighten_then_inpaint(
 
     return result_inpainting
 
+
+def color_preserving_dilation(
+    image: MatLike,
+    kernel_size: int = 3,
+    white_threshold: int = 240,
+    core_threshold: int = 200,
+    require_no_white_neighbors: bool = True
+) -> MatLike:
+    """
+    Apply selective dilation that expands from character cores outward.
+
+    This strengthens characters by dilating only from strong/saturated pixels
+    (the "core" of characters), preventing expansion of faint pixels in gaps
+    or artifacts.
+
+    Algorithm:
+    1. Identify "core" pixels (dark, saturated - clearly part of characters)
+    2. Optionally filter to only dilate pixels with NO white neighbors (prevents gap-filling)
+    3. Dilate ONLY these qualified pixels into white areas
+    4. Leave faint/weak pixels and gap pixels untouched
+
+    Args:
+        image: RGB or BGR image
+        kernel_size: Size of dilation kernel (default: 3)
+        white_threshold: Pixels brighter than this are considered white (default: 240)
+        core_threshold: Pixels darker than this are considered "core" (default: 200)
+        require_no_white_neighbors: Only dilate pixels with no white neighbors (default: True)
+                                     This prevents filling gaps in characters like "0"
+
+    Returns:
+        Image with characters strengthened via selective dilation
+    """
+    # Convert to grayscale and HSV to identify pixel types
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        saturation = hsv[:, :, 1]
+    else:
+        gray = image.copy()
+        saturation = np.zeros_like(gray)
+
+    # Identify pixel types:
+    # - White: >= white_threshold (background)
+    # - Core: < core_threshold OR high saturation (strong character pixels)
+    # - Weak: between core and white (faint pixels, don't dilate these)
+    white_mask = (gray >= white_threshold).astype(np.uint8)
+    core_mask = ((gray < core_threshold) | (saturation > 50)).astype(np.uint8)
+
+    # If required, only dilate core pixels that are NOT inside gaps
+    # A gap is a white region that is surrounded by foreground (like inside "0", "O", "8")
+    if require_no_white_neighbors:
+        # Find "interior" white pixels (gaps) by:
+        # 1. Eroding white mask to remove thin white lines and small gaps
+        # 2. Dilating back to restore size of large white regions
+        # 3. Remaining white after this is either true background or large gaps
+        kernel_5x5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+
+        # Erode white mask - this removes thin white spaces (gaps in characters)
+        white_eroded = cv2.erode(white_mask, kernel_5x5, iterations=1)
+
+        # Dilate back - this restores large white regions (true background)
+        white_restored = cv2.dilate(white_eroded, kernel_5x5, iterations=1)
+
+        # Gaps are white pixels that disappeared after erosion
+        # (they're surrounded by foreground, not true background)
+        gaps = (white_mask > 0) & (white_restored == 0)
+
+        # Dilate the gap mask slightly to include pixels near gaps
+        gap_expanded = cv2.dilate(gaps.astype(np.uint8), kernel_5x5, iterations=1)
+
+        # Only allow core pixels that are NOT near gaps to dilate
+        core_mask = core_mask & (gap_expanded == 0)
+
+    # Create kernel for dilation
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+
+    result = image.copy()
+
+    if len(image.shape) == 3:
+        # For color images, dilate each channel
+        for c in range(image.shape[2]):
+            # Extract only core pixels for this channel
+            core_pixels = image[:, :, c].copy()
+            core_pixels[core_mask == 0] = 255  # Set non-core to white
+
+            # Dilate the core pixels
+            dilated_channel = cv2.dilate(core_pixels, kernel, iterations=1)
+
+            # Only overwrite pixels that are currently white
+            result[:, :, c] = np.where(
+                white_mask > 0,  # Where white background exists
+                dilated_channel,  # Use dilated core value
+                image[:, :, c]  # Keep original value
+            )
+    else:
+        # For grayscale images
+        core_pixels = image.copy()
+        core_pixels[core_mask == 0] = 255
+        dilated = cv2.dilate(core_pixels, kernel, iterations=1)
+        result = np.where(white_mask > 0, dilated, image)
+
+    return result
+
 # Smoke Test for the hairline removal pipeline
 if __name__ == "__main__":
     import sys
