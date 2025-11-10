@@ -200,9 +200,18 @@ def main():
         preprocessed = preprocess_image(img_rgb, method=PREPROCESSING_METHOD)
 
         if SHOW_FOREGROUND_MASK:
-            tokens, fg_mask = tokenizer.tokenize(preprocessed, return_mask=True)
+            tokens, fg_mask = tokenizer.tokenize(
+                preprocessed,
+                return_mask=True,
+                use_color_segmentation=True,
+                remove_other_colors=True
+            )
         else:
-            tokens = tokenizer.tokenize(preprocessed)
+            tokens = tokenizer.tokenize(
+                preprocessed,
+                use_color_segmentation=True,
+                remove_other_colors=True
+            )
             fg_mask = None
 
         label = img_path.stem.split('-')[0]

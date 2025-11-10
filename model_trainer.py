@@ -135,9 +135,13 @@ class CaptchaCharacterDataset(Dataset):
             # Preprocess
             preprocessed = self._preprocess_image(img_rgb)
 
-            # Tokenize
+            # Tokenize using color-based segmentation with color filtering
             try:
-                tokens = self.tokenizer.tokenize(preprocessed)
+                tokens = self.tokenizer.tokenize(
+                    preprocessed,
+                    use_color_segmentation=True,
+                    remove_other_colors=True
+                )
             except Exception as e:
                 print(f"Error tokenizing {img_path.name}: {e}")
                 skipped += 1
