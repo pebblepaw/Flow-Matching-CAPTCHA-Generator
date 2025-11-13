@@ -1,3 +1,4 @@
-from .color_region_tokenizer import ColorRegionTokenizer
+"""Tokenization module."""
+from src.tokenization.color_region_tokenizer import ColorRegionTokenizer
 
-__all__ = ["ColorRegionTokenizer"]
+__all__ = ['ColorRegionTokenizer']
