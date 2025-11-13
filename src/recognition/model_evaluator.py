@@ -25,9 +25,6 @@ def load_trained_model(model_path: str, device: torch.device) -> CharacterCNN:
     model = model.to(device)
 
     print(f"Loaded model from: {model_path}")
-    print(f"Model validation accuracy: {checkpoint.get('val_acc', 'N/A')}")
-    if 'val_acc' in checkpoint:
-        print(f"Trained for {checkpoint.get('epoch', 'N/A')} epochs")
 
     return model
 
@@ -107,10 +104,11 @@ def main(
     )
     print()
 
-    # Prepare sample indices
-    total_samples = len(dataset)
+    failed = dataset.skipped
+    valid = len(dataset)
+    total_samples = failed + valid
 
-    print(f"Processing {total_samples} random samples...\n")
+    print(f"Processing {total_samples} samples (failed_preprocessing: {failed}, valid: {valid})...\n")
 
     # Process samples and make predictions
     results = []
@@ -161,9 +159,18 @@ def main(
     print("=" * 70)
     print(f"Word-Level Accuracy:      {word_correct_count}/{total_words} = {100*word_correct_count/total_words:.2f}%")
     print(f"Character-Level Accuracy: {total_chars_correct}/{total_chars} = {100*total_chars_correct/total_chars:.2f}%")
+    print(f"Overall (incl. failed):   {word_correct_count}/{total_samples} = {100*word_correct_count/total_samples:.2f}%")
     print("=" * 70)
     print()
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Evaluate CAPTCHA recognition model")
+    parser.add_argument("--model-path", type=str, help="Path to trained model checkpoint")
+    args = parser.parse_args()
+
+    if args.model_path is None:
+        parser.error("Model path is required")
+
+    main(model_path=args.model_path)
