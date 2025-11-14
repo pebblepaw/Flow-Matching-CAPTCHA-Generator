@@ -11,7 +11,12 @@
       "Bash(git add:*)",
       "Bash(.venv/Scripts/python:*)",
       "Bash(git cherry-pick:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(dir /b /s *.h5 2)",
+      "Bash(dir /b /s *.pkl 2)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nrefactor: clean up tokenizer by removing unused code\n\n- Remove unused helper methods (_remove_thin_connections, _remove_thin_bridges)\n- Remove unused split methods (_split_wide_regions, _try_erosion_split, _try_projection_split, _try_gradient_split)\n- Remove unused visualization methods (visualize_tokens, visualize_with_boxes)\n- Remove unused __main__ demo block\n- Remove unused split_wide_regions parameter from constructor\n- Remove unused secondary color removal configuration and logic\n- Remove matplotlib import (no longer needed)\n- Make merge_overlapping_boxes private (_merge_overlapping_boxes)\n\nCode reduced from 694 lines to 381 lines (45% reduction)\nEOF\n)\")",
+      "Bash(dir:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
