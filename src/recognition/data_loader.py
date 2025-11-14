@@ -92,8 +92,7 @@ class CaptchaPreprocessPipeline:
             target_height=80,
             padding=2,
             min_saturation=15,
-            max_aspect_ratio=8.0,
-            split_wide_regions=True
+            max_aspect_ratio=8.0
         )
 
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:

@@ -26,9 +26,6 @@ PREPROCESSING_METHOD = 'combined'  # 'color_voting', 'inpainting', or 'combined'
 INPAINT_RADIUS = 2  # Smaller = weaker inpainting (1-3 recommended, default: 2)
 BLACK_THRESHOLD = 50  # Pixels darker than this are considered black (for color voting)
 INPAINT_THRESHOLD = 5  # Threshold for inpainting - only pixels darker than this get inpainted
-REMOVE_SECONDARY_COLORS = False  # Apply secondary color removal to tokens (disabled - method not available)
-HUE_THRESHOLD = 1  # Max HSV Hue difference from dominant color (out of 180)
-VALUE_THRESHOLD = 50  # Max HSV Value difference from dominant color (out of 255)
 
 # ============================================================================
 # AUXILIARY CONFIGURATION (visualization/display only)
@@ -41,7 +38,6 @@ RANDOM_SEED = 100
 DPI = 120
 MAX_INDIVIDUAL_TOKENS = 6
 SHOW_COMBINED_TOKENS = True
-SHOW_COLOR_REMOVAL_COMPARISON = True  # Show before/after comparison for cleaned tokens
 
 
 def get_random_images(train_dir: str, count: int, seed: int = 42) -> List[Path]:
@@ -249,28 +245,6 @@ def visualize_pipeline(
         print(f"    Foreground pixels: {fg_pixels:,} ({fg_percentage:.1f}%)")
         print(f"    Token shapes: {[f'{t.shape[1]}x{t.shape[0]}' for t in tokens]}")
 
-        # Step 3: Apply secondary color removal (if enabled)
-        original_tokens = tokens.copy()  # Keep original for comparison
-        if REMOVE_SECONDARY_COLORS:
-            cleaned_tokens = []
-            num_cleaned = 0
-            for token in tokens:
-                cleaned = tokenizer.remove_secondary_colors(
-                    token,
-                    hue_threshold=HUE_THRESHOLD,
-                    value_threshold=VALUE_THRESHOLD
-                )
-                cleaned_tokens.append(cleaned)
-                # Check if any changes were made
-                if not np.array_equal(token, cleaned):
-                    num_cleaned += 1
-            if num_cleaned > 0:
-                print(f"  [OK] Secondary Color Removal: Cleaned {num_cleaned}/{num_tokens} tokens")
-            # Use cleaned tokens for display
-            tokens = cleaned_tokens
-        else:
-            num_cleaned = 0
-
         # Determine title color
         title_color = 'green' if token_match else 'red'
         border_color = 'green' if token_match else 'red'
@@ -335,29 +309,9 @@ def visualize_pipeline(
             ax = axes[idx, col_idx + t_idx]
             if t_idx < num_tokens:
                 token = tokens[t_idx]
-
-                # Show before/after comparison if enabled and token was cleaned
-                if SHOW_COLOR_REMOVAL_COMPARISON and REMOVE_SECONDARY_COLORS and num_cleaned > 0:
-                    # Check if this specific token was cleaned
-                    token_was_cleaned = not np.array_equal(original_tokens[t_idx], token)
-
-                    if token_was_cleaned:
-                        # Create side-by-side comparison
-                        h, w = token.shape[:2]
-                        combined = np.ones((h, w*2 + 5, 3), dtype=np.uint8) * 255
-                        combined[:, :w] = original_tokens[t_idx]
-                        combined[:, w+5:] = token
-                        ax.imshow(combined)
-                        ax.set_title(f'Token {t_idx+1} [B→A]\n{w}x{h}',
-                                   fontsize=8, color='orange', weight='bold')
-                    else:
-                        ax.imshow(token)
-                        ax.set_title(f'Token {t_idx+1}\n{token.shape[1]}x{token.shape[0]}',
-                                   fontsize=8, color=title_color)
-                else:
-                    ax.imshow(token)
-                    ax.set_title(f'Token {t_idx+1}\n{token.shape[1]}x{token.shape[0]}',
-                               fontsize=8, color=title_color)
+                ax.imshow(token)
+                ax.set_title(f'Token {t_idx+1}\n{token.shape[1]}x{token.shape[0]}',
+                           fontsize=8, color=title_color)
             else:
                 ax.text(0.5, 0.5, 'N/A',
                        ha='center', va='center',
@@ -455,12 +409,6 @@ def main():
     print(f"  Black threshold: {BLACK_THRESHOLD}")
     print(f"  Max individual tokens displayed: {MAX_INDIVIDUAL_TOKENS}")
     print(f"  Show combined tokens: {SHOW_COMBINED_TOKENS}")
-    print(f"  Remove secondary colors: {REMOVE_SECONDARY_COLORS}")
-    if REMOVE_SECONDARY_COLORS:
-        print(f"    - Hue threshold: {HUE_THRESHOLD} (HSV Hue, max 180)")
-        print(f"    - Value threshold: {VALUE_THRESHOLD} (HSV Value, max 255)")
-        print(f"    - Logic: OR (remove if EITHER hue OR value differ)")
-        print(f"    - Show comparison: {SHOW_COLOR_REMOVAL_COMPARISON}")
     print(f"  DPI: {DPI}")
     print("=" * 80)
 
@@ -478,7 +426,6 @@ def main():
         padding=5,
         min_saturation=15,
         max_aspect_ratio=8.0,
-        split_wide_regions=True,
         normalize_regions=True
     )
     print("  [OK] Tokenizer initialized")
