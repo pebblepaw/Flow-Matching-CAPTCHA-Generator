@@ -213,18 +213,18 @@ def calculate_improvement_impact(char_stats: Dict[str, Dict]) -> List[Tuple]:
 
 def plot_analysis(
     balance_metrics: Dict,
-    char_stats: Dict,
-    theoretical_limits: Dict,
+    char_stats_test: Dict,
+    avg_char_accuracy_test: float,
     output_file: str = "class_balance_analysis.png",
     dpi: int = 120
 ):
     """Create comprehensive visualization of class balance analysis."""
 
-    fig = plt.figure(figsize=(18, 12))
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    fig = plt.figure(figsize=(16, 6))
+    gs = fig.add_gridspec(1, 2, hspace=0.3, wspace=0.3)
 
-    # 1. Class distribution (bar chart)
-    ax1 = fig.add_subplot(gs[0, :2])
+    # 1. Class distribution (bar chart) - from entire filtered dataset
+    ax1 = fig.add_subplot(gs[0, 0])
     chars = sorted(balance_metrics['distribution'].keys())
     counts = [balance_metrics['distribution'][c] for c in chars]
     colors = ['#1f77b4' if c.isdigit() else '#ff7f0e' for c in chars]
@@ -233,128 +233,30 @@ def plot_analysis(
     ax1.set_ylabel('Frequency', fontsize=12)
     ax1.set_title('Class Distribution (Blue=Digits, Orange=Letters)', fontsize=14, weight='bold')
     ax1.axhline(y=balance_metrics['mean_count'], color='r', linestyle='--',
-                label=f"Mean: {balance_metrics['mean_count']:.1f}")
-    ax1.legend()
+                label=f"Mean: {balance_metrics['mean_count']:.1f}", linewidth=2)
+    ax1.legend(fontsize=10)
     ax1.grid(axis='y', alpha=0.3)
 
-    # 2. Balance metrics (text box)
-    ax2 = fig.add_subplot(gs[0, 2])
-    ax2.axis('off')
-    metrics_text = (
-        f"Class Balance Metrics\n"
-        f"{'='*30}\n"
-        f"Total Characters: {balance_metrics['total_chars']:,}\n"
-        f"Number of Classes: {balance_metrics['num_classes']}\n"
-        f"Mean Count: {balance_metrics['mean_count']:.1f}\n"
-        f"Std Dev: {balance_metrics['std_count']:.1f}\n"
-        f"Min Count: {balance_metrics['min_count']}\n"
-        f"Max Count: {balance_metrics['max_count']}\n"
-        f"Imbalance Ratio: {balance_metrics['imbalance_ratio']:.2f}x\n"
-        f"Coeff. of Variation: {balance_metrics['cv']:.2%}\n\n"
-        f"Interpretation:\n"
-        f"{'='*30}\n"
-        f"{'Balanced' if balance_metrics['imbalance_ratio'] < 1.5 else 'Imbalanced'}\n"
-        f"({balance_metrics['imbalance_ratio']:.2f}x ratio)"
-    )
-    ax2.text(0.1, 0.5, metrics_text, fontsize=10, family='monospace',
-             verticalalignment='center')
-
-    # 3. Per-character accuracy
-    ax3 = fig.add_subplot(gs[1, :2])
-    chars_by_acc = sorted(char_stats.items(), key=lambda x: x[1]['accuracy'])
-    chars = [c for c, _ in chars_by_acc]
-    accs = [s['accuracy'] for _, s in chars_by_acc]
-    colors = ['#d62728' if acc < 0.8 else '#2ca02c' if acc > 0.95 else '#ff7f0e'
-              for acc in accs]
-    ax3.barh(chars, accs, color=colors)
-    ax3.set_xlabel('Accuracy', fontsize=12)
-    ax3.set_ylabel('Character', fontsize=12)
-    ax3.set_title('Per-Character Accuracy (Red<80%, Orange=80-95%, Green>95%)',
-                  fontsize=14, weight='bold')
-    ax3.axvline(x=theoretical_limits['avg_char_accuracy'], color='b', linestyle='--',
-                label=f"Mean: {theoretical_limits['avg_char_accuracy']:.2%}")
-    ax3.legend()
-    ax3.grid(axis='x', alpha=0.3)
-
-    # 4. Theoretical limits (bar chart)
-    ax4 = fig.add_subplot(gs[1, 2])
-    scenarios = [
-        'Current',
-        'Fix Bottom 25%',
-        'Fix Bottom 50%',
-        'All to Best',
-        'Perfect'
-    ]
-    values = [
-        theoretical_limits['current_accuracy'],
-        theoretical_limits['fixed_bottom_25'],
-        theoretical_limits['fixed_bottom_50'],
-        theoretical_limits['all_best_accuracy'],
-        theoretical_limits['perfect_accuracy']
-    ]
-    colors_scenarios = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-    bars = ax4.barh(scenarios, values, color=colors_scenarios)
-    ax4.set_xlabel('Accuracy', fontsize=12)
-    ax4.set_title('Theoretical Accuracy Limits', fontsize=14, weight='bold')
-    ax4.set_xlim(0.8, 1.0)
-    for i, (bar, val) in enumerate(zip(bars, values)):
-        ax4.text(val + 0.005, i, f'{val:.2%}', va='center', fontsize=10)
-    ax4.grid(axis='x', alpha=0.3)
-
-    # 5. Improvement impact (top 10)
-    ax5 = fig.add_subplot(gs[2, :2])
-    impacts = calculate_improvement_impact(char_stats)[:10]
-    chars_impact = [c for c, _, _, _ in impacts]
-    impact_vals = [imp * 100 for _, _, imp, _ in impacts]  # Convert to percentage points
-    ax5.barh(chars_impact, impact_vals, color='#17becf')
-    ax5.set_xlabel('Impact on Overall Accuracy (% points)', fontsize=12)
-    ax5.set_ylabel('Character', fontsize=12)
-    ax5.set_title('Top 10: Impact of 1% Improvement per Character',
-                  fontsize=14, weight='bold')
-    ax5.grid(axis='x', alpha=0.3)
-    for i, (char, curr_acc, imp, count) in enumerate(impacts[:10]):
-        ax5.text(impact_vals[i] + 0.001, i,
-                f'{curr_acc:.1%} ({count})',
-                va='center', fontsize=9)
-
-    # 6. Summary and recommendations (text box)
-    ax6 = fig.add_subplot(gs[2, 2])
-    ax6.axis('off')
-
-    # Find worst performing high-frequency chars
-    high_freq_chars = sorted(
-        [(c, s) for c, s in char_stats.items()],
-        key=lambda x: x[1]['total'],
-        reverse=True
-    )[:10]
-    worst_of_common = sorted(
-        high_freq_chars,
-        key=lambda x: x[1]['accuracy']
-    )[:3]
-
-    summary_text = (
-        f"Key Insights\n"
-        f"{'='*30}\n\n"
-        f"Current: {theoretical_limits['current_accuracy']:.2%}\n"
-        f"Gap to Perfect: {theoretical_limits['gap_to_perfect']:.2%}\n\n"
-        f"Quick Wins:\n"
-        f"{'='*30}\n"
-        f"Fix bottom 25% chars:\n"
-        f"  → {theoretical_limits['fixed_bottom_25']:.2%}\n"
-        f"  (Gain: {(theoretical_limits['fixed_bottom_25']-theoretical_limits['current_accuracy']):.2%})\n\n"
-        f"Priority Targets:\n"
-        f"{'='*30}\n"
-    )
-
-    for i, (char, stats) in enumerate(worst_of_common, 1):
-        summary_text += f"{i}. '{char}': {stats['accuracy']:.1%}\n"
-        summary_text += f"   ({stats['total']} samples)\n"
-
-    ax6.text(0.05, 0.95, summary_text, fontsize=10, family='monospace',
-             verticalalignment='top', transform=ax6.transAxes)
+    # 2. Per-character accuracy (top 10 lowest) - from test set only
+    ax2 = fig.add_subplot(gs[0, 1])
+    chars_by_acc = sorted(char_stats_test.items(), key=lambda x: x[1]['accuracy'])
+    # Take bottom 10 (lowest accuracy)
+    bottom_10 = chars_by_acc[:10]
+    chars = [c for c, _ in bottom_10]
+    accs = [s['accuracy'] for _, s in bottom_10]
+    colors = ['#d62728' if acc < 0.8 else '#ff7f0e' for acc in accs]
+    ax2.barh(chars, accs, color=colors)
+    ax2.set_xlabel('Accuracy', fontsize=12)
+    ax2.set_ylabel('Character', fontsize=12)
+    ax2.set_title('Bottom 10 Characters by Accuracy (Test Set)', fontsize=14, weight='bold')
+    ax2.axvline(x=avg_char_accuracy_test, color='b', linestyle='--',
+                label=f"Mean: {avg_char_accuracy_test:.2%}", linewidth=2)
+    ax2.legend(fontsize=10)
+    ax2.grid(axis='x', alpha=0.3)
+    ax2.set_xlim(0, 1.05)
 
     # Main title
-    fig.suptitle('Class Balance and Theoretical Optimum Analysis',
+    fig.suptitle('Character-Level Analysis',
                  fontsize=16, weight='bold', y=0.995)
 
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
@@ -365,11 +267,17 @@ def plot_analysis(
 
 def main(
     model_path: str = "char_recognizer.pth",
-    image_dir: str = "data/raw/test",
-    cache_dir: str = "data/processed/test_cache",
+    image_dirs: List[str] = None,
+    cache_dirs: List[str] = None,
     output_file: str = "class_balance_analysis.png"
 ):
     """Main analysis function."""
+
+    # Default to using both filtered/train and filtered/test
+    if image_dirs is None:
+        image_dirs = ["data/filtered/train", "data/filtered/test"]
+    if cache_dirs is None:
+        cache_dirs = ["data/processed/filtered_train_cache", "data/processed/filtered_test_cache"]
 
     # Set random seeds
     random.seed(SEED)
@@ -384,6 +292,7 @@ def main(
     print("=" * 70)
     print(f"Device: {device}")
     print(f"Model: {model_path}")
+    print(f"Image directories: {image_dirs}")
     print("=" * 70)
     print()
 
@@ -391,34 +300,50 @@ def main(
     print("Loading model...")
     model = load_trained_model(model_path, device)
 
-    # Load dataset
-    print("Loading dataset...")
-    dataset = CaptchaWordDataset(
-        image_dir=Path(image_dir),
-        cache_dir=Path(cache_dir)
-    )
-    print(f"Dataset: {len(dataset)} samples")
+    # Load datasets separately
+    print("Loading datasets...")
+    all_gt_chars = []  # For class distribution (all datasets)
+    test_gt_chars = []  # For accuracy analysis (test only)
+    test_pred_chars = []  # For accuracy analysis (test only)
+
+    for image_dir, cache_dir in zip(image_dirs, cache_dirs):
+        print(f"\n  Processing: {image_dir}")
+        dataset = CaptchaWordDataset(
+            image_dir=Path(image_dir),
+            cache_dir=Path(cache_dir)
+        )
+        print(f"  Loaded: {len(dataset)} samples")
+
+        # Collect predictions for this dataset
+        gt_chars, pred_chars = collect_predictions(model, dataset, device)
+
+        # Add to overall class distribution
+        all_gt_chars.extend(gt_chars)
+
+        # Only add to test accuracy if this is test set
+        if "test" in str(image_dir):
+            test_gt_chars.extend(gt_chars)
+            test_pred_chars.extend(pred_chars)
+            print(f"  Added to test accuracy analysis: {len(gt_chars)} characters")
+
+    print(f"\nTotal characters for class distribution: {len(all_gt_chars)}")
+    print(f"Total characters for accuracy analysis (test only): {len(test_gt_chars)}")
     print()
 
-    # Collect predictions
-    print("Collecting predictions...")
-    all_gt_chars, all_pred_chars = collect_predictions(model, dataset, device)
-    print(f"Total characters: {len(all_gt_chars)}")
-    print()
-
-    # Analyze class balance
-    print("Analyzing class balance...")
+    # Analyze class balance on all data
+    print("Analyzing class balance (entire filtered dataset)...")
     balance_metrics = analyze_class_balance(all_gt_chars)
     print()
 
-    # Calculate per-character accuracy
-    print("Calculating per-character accuracy...")
-    char_stats = calculate_per_char_accuracy(all_gt_chars, all_pred_chars)
-    print()
+    # Calculate per-character accuracy on test data only
+    print("Calculating per-character accuracy (test set only)...")
+    char_stats_test = calculate_per_char_accuracy(test_gt_chars, test_pred_chars)
 
-    # Calculate theoretical limits
-    print("Calculating theoretical limits...")
-    theoretical_limits = calculate_theoretical_limits(char_stats)
+    # Calculate average test accuracy
+    avg_char_accuracy_test = sum(
+        stats['accuracy'] * stats['weight']
+        for stats in char_stats_test.values()
+    )
     print()
 
     # Print detailed results
@@ -427,33 +352,27 @@ def main(
     print("=" * 70)
     print()
 
-    print("Class Balance Metrics:")
+    print("Class Balance Metrics (Entire Filtered Dataset):")
+    print(f"  Total Characters: {balance_metrics['total_chars']:,}")
     print(f"  Imbalance Ratio: {balance_metrics['imbalance_ratio']:.2f}x")
     print(f"  Most Common: {max(balance_metrics['distribution'].items(), key=lambda x: x[1])}")
     print(f"  Least Common: {min(balance_metrics['distribution'].items(), key=lambda x: x[1])}")
     print()
 
-    print("Theoretical Accuracy Limits:")
-    print(f"  Current Accuracy: {theoretical_limits['current_accuracy']:.4f} ({theoretical_limits['current_accuracy']:.2%})")
-    print(f"  Fix Bottom 25%:   {theoretical_limits['fixed_bottom_25']:.4f} ({theoretical_limits['fixed_bottom_25']:.2%})")
-    print(f"  Fix Bottom 50%:   {theoretical_limits['fixed_bottom_50']:.4f} ({theoretical_limits['fixed_bottom_50']:.2%})")
-    print(f"  All to Best:      {theoretical_limits['all_best_accuracy']:.4f} ({theoretical_limits['all_best_accuracy']:.2%})")
-    print(f"  Perfect (100%):   {theoretical_limits['perfect_accuracy']:.4f} ({theoretical_limits['perfect_accuracy']:.2%})")
+    print("Test Set Accuracy Metrics:")
+    print(f"  Total Test Characters: {len(test_gt_chars):,}")
+    print(f"  Average Character Accuracy: {avg_char_accuracy_test:.4f} ({avg_char_accuracy_test:.2%})")
     print()
 
-    print(f"  Gap to Perfect:   {theoretical_limits['gap_to_perfect']:.4f} ({theoretical_limits['gap_to_perfect']:.2%})")
-    print()
-
-    print("Top 5 Impact Characters (1% improvement):")
-    impacts = calculate_improvement_impact(char_stats)
-    for i, (char, curr_acc, impact, count) in enumerate(impacts[:5], 1):
-        print(f"  {i}. '{char}': +{impact:.4f} (+{impact*100:.2f}% points) "
-              f"[Current: {curr_acc:.2%}, Freq: {count}]")
+    print("Bottom 10 Characters by Accuracy (Test Set):")
+    chars_by_acc = sorted(char_stats_test.items(), key=lambda x: x[1]['accuracy'])
+    for i, (char, stats) in enumerate(chars_by_acc[:10], 1):
+        print(f"  {i}. '{char}': {stats['accuracy']:.2%} ({stats['correct']}/{stats['total']})")
     print()
 
     # Generate visualization
     print("Generating visualization...")
-    plot_analysis(balance_metrics, char_stats, theoretical_limits, output_file)
+    plot_analysis(balance_metrics, char_stats_test, avg_char_accuracy_test, output_file)
     print()
 
     print("=" * 70)
@@ -474,16 +393,18 @@ if __name__ == "__main__":
         help="Path to trained model"
     )
     parser.add_argument(
-        "--image-dir",
+        "--image-dirs",
         type=str,
-        default="data/raw/test",
-        help="Test images directory"
+        nargs='+',
+        default=None,
+        help="Image directories (default: data/filtered/train data/filtered/test)"
     )
     parser.add_argument(
-        "--cache-dir",
+        "--cache-dirs",
         type=str,
-        default="data/processed/test_cache",
-        help="Cache directory"
+        nargs='+',
+        default=None,
+        help="Cache directories (default: data/processed/filtered_train_cache data/processed/filtered_test_cache)"
     )
     parser.add_argument(
         "--output",
@@ -496,7 +417,7 @@ if __name__ == "__main__":
 
     main(
         model_path=args.model_path,
-        image_dir=args.image_dir,
-        cache_dir=args.cache_dir,
+        image_dirs=args.image_dirs,
+        cache_dirs=args.cache_dirs,
         output_file=args.output
     )

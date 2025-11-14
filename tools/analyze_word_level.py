@@ -198,129 +198,43 @@ def plot_word_analysis(
     output_file: str = "word_level_analysis.png",
     dpi: int = 120
 ):
-    """Create comprehensive visualization of word-level analysis."""
+    """Create word-level analysis visualization."""
 
-    fig = plt.figure(figsize=(18, 12))
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    fig = plt.figure(figsize=(16, 6))
+    gs = fig.add_gridspec(1, 2, hspace=0.3, wspace=0.3)
 
-    # 1. Word length distribution
-    ax1 = fig.add_subplot(gs[0, :2])
-    lengths = sorted(length_dist['distribution'].keys())
-    counts = [length_dist['distribution'][l] for l in lengths]
-    ax1.bar(lengths, counts, color='#1f77b4', alpha=0.7, edgecolor='black')
-    ax1.set_xlabel('Word Length (characters)', fontsize=12)
-    ax1.set_ylabel('Frequency', fontsize=12)
-    ax1.set_title('Word Length Distribution', fontsize=14, weight='bold')
-    ax1.axvline(x=length_dist['mean'], color='r', linestyle='--',
-                label=f"Mean: {length_dist['mean']:.1f}", linewidth=2)
-    ax1.axvline(x=length_dist['mode'], color='g', linestyle='--',
-                label=f"Mode: {length_dist['mode']}", linewidth=2)
-    ax1.legend(fontsize=11)
-    ax1.grid(axis='y', alpha=0.3)
-    ax1.set_xticks(lengths)
-
-    # Add count labels on bars
-    for i, (length, count) in enumerate(zip(lengths, counts)):
-        ax1.text(length, count + max(counts)*0.02, str(count),
-                ha='center', va='bottom', fontsize=10, weight='bold')
-
-    # 2. Length statistics (text box)
-    ax2 = fig.add_subplot(gs[0, 2])
-    ax2.axis('off')
-    stats_text = (
-        f"Word Length Statistics\n"
-        f"{'='*35}\n"
-        f"Total Words: {len(word_limits):,}\n"
-        f"Mean Length: {length_dist['mean']:.2f}\n"
-        f"Std Dev: {length_dist['std']:.2f}\n"
-        f"Min Length: {length_dist['min']}\n"
-        f"Max Length: {length_dist['max']}\n"
-        f"Median: {length_dist['median']:.1f}\n"
-        f"Mode: {length_dist['mode']}\n\n"
-        f"Current Word Accuracy:\n"
-        f"{'='*35}\n"
-        f"{word_limits['current_word_accuracy']:.2%}\n\n"
-        f"(Word correct only if\n"
-        f"ALL characters correct)"
-    )
-    ax2.text(0.1, 0.5, stats_text, fontsize=11, family='monospace',
-             verticalalignment='center')
-
-    # 3. Word vs Character accuracy by length
-    ax3 = fig.add_subplot(gs[1, :2])
+    # 1. Word accuracy by word length
+    ax1 = fig.add_subplot(gs[0, 0])
     lengths_sorted = sorted(length_stats.keys())
     word_accs = [length_stats[l]['word_accuracy'] for l in lengths_sorted]
-    char_accs = [length_stats[l]['avg_char_accuracy'] for l in lengths_sorted]
 
-    x = np.arange(len(lengths_sorted))
-    width = 0.35
+    bars = ax1.bar(lengths_sorted, word_accs, color='#1f77b4', alpha=0.7, edgecolor='black')
+    ax1.set_xlabel('Word Length (# of characters)', fontsize=12, labelpad=15)
+    ax1.set_ylabel('Word Accuracy', fontsize=12)
+    ax1.set_title('Word Accuracy by Word Length', fontsize=14, weight='bold')
+    ax1.grid(axis='y', alpha=0.3)
+    ax1.set_ylim(0, 1.05)
+    ax1.set_xticks(lengths_sorted)
 
-    bars1 = ax3.bar(x - width/2, word_accs, width, label='Word Accuracy',
-                    color='#d62728', alpha=0.8)
-    bars2 = ax3.bar(x + width/2, char_accs, width, label='Char Accuracy',
-                    color='#2ca02c', alpha=0.8)
+    # Add overall average word accuracy line
+    overall_avg = word_limits['current_word_accuracy']
+    ax1.axhline(y=overall_avg, color='r', linestyle='--',
+                label=f"Overall Avg: {overall_avg:.1%}", linewidth=2)
+    ax1.legend(fontsize=10)
 
-    ax3.set_xlabel('Word Length', fontsize=12)
-    ax3.set_ylabel('Accuracy', fontsize=12)
-    ax3.set_title('Word vs Character Accuracy by Length', fontsize=14, weight='bold')
-    ax3.set_xticks(x)
-    ax3.set_xticklabels(lengths_sorted)
-    ax3.legend(fontsize=11)
-    ax3.grid(axis='y', alpha=0.3)
-    ax3.set_ylim(0, 1.05)
+    # Add accuracy labels on bars
+    for length, acc, bar in zip(lengths_sorted, word_accs, bars):
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                f'{acc:.1%}', ha='center', va='bottom', fontsize=10, weight='bold')
+        # Add sample count below x-axis label
+        count = length_stats[length]['word_total']
+        ax1.text(bar.get_x() + bar.get_width()/2., -0.08,
+                f'n={count}', ha='center', va='top', fontsize=9, style='italic')
 
-    # Add value labels
-    for bars in [bars1, bars2]:
-        for bar in bars:
-            height = bar.get_height()
-            ax3.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                    f'{height:.1%}', ha='center', va='bottom', fontsize=9)
-
-    # 4. Sample counts by length
-    ax4 = fig.add_subplot(gs[1, 2])
-    sample_counts = [length_stats[l]['word_total'] for l in lengths_sorted]
-    correct_counts = [length_stats[l]['word_correct'] for l in lengths_sorted]
-
-    ax4.barh(range(len(lengths_sorted)), sample_counts,
-             color='#1f77b4', alpha=0.3, label='Total')
-    ax4.barh(range(len(lengths_sorted)), correct_counts,
-             color='#2ca02c', alpha=0.8, label='Correct')
-    ax4.set_yticks(range(len(lengths_sorted)))
-    ax4.set_yticklabels([f'Length {l}' for l in lengths_sorted])
-    ax4.set_xlabel('Number of Words', fontsize=12)
-    ax4.set_title('Sample Distribution', fontsize=14, weight='bold')
-    ax4.legend(fontsize=11)
-    ax4.grid(axis='x', alpha=0.3)
-
-    # Add count labels
-    for i, (total, correct) in enumerate(zip(sample_counts, correct_counts)):
-        ax4.text(total + max(sample_counts)*0.02, i,
-                f'{correct}/{total}', va='center', fontsize=9)
-
-    # 5. Theoretical limits curve
-    ax5 = fig.add_subplot(gs[2, :2])
-    char_accs = sorted(word_limits['theoretical_at_char_accuracy'].keys())
-    word_accs_theoretical = [word_limits['theoretical_at_char_accuracy'][ca] for ca in char_accs]
-
-    ax5.plot(char_accs, word_accs_theoretical, 'b-o', linewidth=2, markersize=8,
-            label='Theoretical Word Accuracy')
-    ax5.axhline(y=word_limits['current_word_accuracy'], color='r', linestyle='--',
-                label=f"Current: {word_limits['current_word_accuracy']:.2%}", linewidth=2)
-    ax5.set_xlabel('Character-Level Accuracy', fontsize=12)
-    ax5.set_ylabel('Word-Level Accuracy', fontsize=12)
-    ax5.set_title('Theoretical Word Accuracy vs Character Accuracy',
-                 fontsize=14, weight='bold')
-    ax5.legend(fontsize=11)
-    ax5.grid(alpha=0.3)
-    ax5.set_xlim(0.88, 1.02)
-
-    # Add value labels on curve
-    for ca, wa in zip(char_accs, word_accs_theoretical):
-        ax5.text(ca, wa + 0.02, f'{wa:.1%}', ha='center', fontsize=9)
-
-    # 6. Theoretical limits table
-    ax6 = fig.add_subplot(gs[2, 2])
-    ax6.axis('off')
+    # 2. Theoretical limits table
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.axis('off')
 
     limits_text = (
         f"Theoretical Limits\n"
@@ -336,13 +250,15 @@ def plot_word_analysis(
     limits_text += f"\n{'-'*35}\n"
     limits_text += f"Current Word Acc:\n{word_limits['current_word_accuracy']:.2%}\n\n"
     limits_text += f"To reach 95% word acc,\n"
-    limits_text += f"need ~{0.95**(1/length_dist['mean']):.1%} char acc"
+    limits_text += f"need ~{0.95**(1/length_dist['mean']):.1%} char acc\n\n"
+    limits_text += f"{'-'*35}\n"
+    limits_text += f"Mean word length:\n{length_dist['mean']:.2f} characters"
 
-    ax6.text(0.05, 0.95, limits_text, fontsize=11, family='monospace',
-             verticalalignment='top', transform=ax6.transAxes)
+    ax2.text(0.05, 0.95, limits_text, fontsize=11, family='monospace',
+             verticalalignment='top', transform=ax2.transAxes)
 
     # Main title
-    fig.suptitle('Word-Level Distribution and Theoretical Limits Analysis',
+    fig.suptitle('Word-Level Analysis',
                  fontsize=16, weight='bold', y=0.995)
 
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
@@ -353,11 +269,17 @@ def plot_word_analysis(
 
 def main(
     model_path: str = "char_recognizer.pth",
-    image_dir: str = "data/raw/test",
-    cache_dir: str = "data/processed/test_cache",
+    image_dirs: List[str] = None,
+    cache_dirs: List[str] = None,
     output_file: str = "word_level_analysis.png"
 ):
     """Main analysis function."""
+
+    # Default to using only filtered/test
+    if image_dirs is None:
+        image_dirs = ["data/filtered/test"]
+    if cache_dirs is None:
+        cache_dirs = ["data/processed/filtered_test_cache"]
 
     # Set random seeds
     random.seed(SEED)
@@ -372,6 +294,7 @@ def main(
     print("=" * 70)
     print(f"Device: {device}")
     print(f"Model: {model_path}")
+    print(f"Image directories: {image_dirs}")
     print("=" * 70)
     print()
 
@@ -379,37 +302,46 @@ def main(
     print("Loading model...")
     model = load_trained_model(model_path, device)
 
-    # Load dataset
-    print("Loading dataset...")
-    dataset = CaptchaWordDataset(
-        image_dir=Path(image_dir),
-        cache_dir=Path(cache_dir)
-    )
-    print(f"Dataset: {len(dataset)} words")
-    print()
+    # Load and combine datasets
+    print("Loading datasets...")
+    all_word_lengths = []
+    all_word_correct = []
+    all_word_char_accuracies = []
 
-    # Evaluate at word level
-    print("Evaluating word-level accuracy...")
-    word_lengths, word_correct, word_char_accuracies = evaluate_word_level(
-        model, dataset, device
-    )
-    print(f"Total words evaluated: {len(word_lengths)}")
+    for image_dir, cache_dir in zip(image_dirs, cache_dirs):
+        print(f"\n  Processing: {image_dir}")
+        dataset = CaptchaWordDataset(
+            image_dir=Path(image_dir),
+            cache_dir=Path(cache_dir)
+        )
+        print(f"  Loaded: {len(dataset)} words")
+
+        # Evaluate at word level for this dataset
+        print(f"  Evaluating word-level accuracy...")
+        word_lengths, word_correct, word_char_accuracies = evaluate_word_level(
+            model, dataset, device
+        )
+        all_word_lengths.extend(word_lengths)
+        all_word_correct.extend(word_correct)
+        all_word_char_accuracies.extend(word_char_accuracies)
+
+    print(f"\nTotal words across all datasets: {len(all_word_lengths)}")
     print()
 
     # Analyze word length distribution
     print("Analyzing word length distribution...")
-    length_dist = analyze_word_length_distribution(word_lengths)
+    length_dist = analyze_word_length_distribution(all_word_lengths)
     print()
 
     # Calculate theoretical limits
     print("Calculating theoretical limits...")
-    word_limits = calculate_word_level_limits(word_lengths, word_correct)
+    word_limits = calculate_word_level_limits(all_word_lengths, all_word_correct)
     print()
 
     # Analyze by word length
     print("Analyzing accuracy by word length...")
     length_stats = analyze_by_word_length(
-        word_lengths, word_correct, word_char_accuracies
+        all_word_lengths, all_word_correct, all_word_char_accuracies
     )
     print()
 
@@ -429,7 +361,7 @@ def main(
     print("Distribution by length:")
     for length in sorted(length_dist['distribution'].keys()):
         count = length_dist['distribution'][length]
-        pct = count / len(word_lengths) * 100
+        pct = count / len(all_word_lengths) * 100
         print(f"  Length {length}: {count:4d} words ({pct:5.1f}%)")
     print()
 
@@ -481,16 +413,18 @@ if __name__ == "__main__":
         help="Path to trained model"
     )
     parser.add_argument(
-        "--image-dir",
+        "--image-dirs",
         type=str,
-        default="data/raw/test",
-        help="Test images directory"
+        nargs='+',
+        default=None,
+        help="Image directories (default: data/filtered/test)"
     )
     parser.add_argument(
-        "--cache-dir",
+        "--cache-dirs",
         type=str,
-        default="data/processed/test_cache",
-        help="Cache directory"
+        nargs='+',
+        default=None,
+        help="Cache directories (default: data/processed/filtered_test_cache)"
     )
     parser.add_argument(
         "--output",
@@ -503,7 +437,7 @@ if __name__ == "__main__":
 
     main(
         model_path=args.model_path,
-        image_dir=args.image_dir,
-        cache_dir=args.cache_dir,
+        image_dirs=args.image_dirs,
+        cache_dirs=args.cache_dirs,
         output_file=args.output
     )
