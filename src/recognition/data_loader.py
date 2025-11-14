@@ -154,7 +154,6 @@ class CaptchaPreprocessPipeline:
             print(f"Error tokenizing {img_path.name}: {e}")
             failed_dir = self.cache_dir / "000_failed_tokenization_error"
             failed_dir.mkdir(parents=True, exist_ok=True)
-<<<<<<< HEAD
 
             # Create 3-row visualization: original, preprocessed, tokens (empty in this case)
             img_bgr_raw = cv2.imread(str(img_path))
@@ -170,11 +169,6 @@ class CaptchaPreprocessPipeline:
                                   constant_values=255)
 
             combined = np.vstack((img_raw_padded, img_proc_padded, tokens_padded))
-=======
-            # combine original and processed vertically
-            img_bgr_raw = cv2.imread(str(img_path))
-            combined = np.vstack((img_bgr_raw, img_bgr))
->>>>>>> main
             cv2.imwrite(str(failed_dir / img_path.name), combined)
             return []
 
@@ -182,7 +176,6 @@ class CaptchaPreprocessPipeline:
         if len(tokens) != len(label):
             failed_dir = self.cache_dir / "000_failed_mismatch_token_count"
             failed_dir.mkdir(parents=True, exist_ok=True)
-<<<<<<< HEAD
 
             # Create 3-row visualization: original, preprocessed, tokens
             img_bgr_raw = cv2.imread(str(img_path))
@@ -198,11 +191,6 @@ class CaptchaPreprocessPipeline:
                                   constant_values=255)
 
             combined = np.vstack((img_raw_padded, img_proc_padded, tokens_padded))
-=======
-            # combine original and processed vertically
-            img_bgr_raw = cv2.imread(str(img_path))
-            combined = np.vstack((img_bgr_raw, img_bgr))
->>>>>>> main
             cv2.imwrite(str(failed_dir / img_path.name), combined)
             return []
 
