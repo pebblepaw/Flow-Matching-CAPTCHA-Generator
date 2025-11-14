@@ -7,7 +7,7 @@ from src.recognition.data_loader import create_dataloaders
 from src.recognition.model.character_cnn import CharacterCNN, train_model
 
 
-def main():
+def main(model_name: str):
     # Configuration
     TRAIN_IMG_DIR = Path("data/raw/train")
     TRAIN_IMG_CACHE_DIR = Path("data/processed/train_cache")
@@ -16,7 +16,7 @@ def main():
     LEARNING_RATE = 0.001
     TRAIN_VAL_RATIO = 0.8
     NUM_WORKERS = 0  # Set to 0 for Windows
-    MODEL_SAVE_PATH = Path("checkpoints/character_cnn")
+    MODEL_SAVE_PATH = Path("checkpoints") / model_name
 
     # Set random seeds
     random.seed(SEED)
@@ -66,4 +66,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Train character recognition model")
+    parser.add_argument("--model-name", type=str, help="Name of the trained model")
+    args = parser.parse_args()
+
+    if args.model_name is None:
+        parser.error("Model name is required")
+    else:
+        model_name = args.model_name
+    main(model_name=model_name)

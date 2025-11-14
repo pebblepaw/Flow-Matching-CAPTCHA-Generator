@@ -1,10 +1,5 @@
 import shutil
-import sys
 from pathlib import Path
-from enum import Enum
-
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from cv2.typing import MatLike
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -14,22 +9,10 @@ import torch
 
 from torchvision import transforms
 from src.config import SEED, CHAR_TO_IDX
-from src.preprocessing import color_voting_then_inpainting, color_voting_remove_black_hairline, inpainting_remove_black_hairline
+from src.preprocessing import PreprocessingMethod
 from src.tokenization import ColorRegionTokenizer
 from tqdm import tqdm
 
-class PreprocessingMethod(Enum):
-    COLOR_VOTING = "color_voting"
-    INPAINTING = "inpainting"
-    COLOR_VOTING_THEN_INPAINTING = "color_voting_then_inpainting"
-
-    @property
-    def function(self):
-        return {
-            PreprocessingMethod.COLOR_VOTING: color_voting_remove_black_hairline,
-            PreprocessingMethod.INPAINTING: inpainting_remove_black_hairline,
-            PreprocessingMethod.COLOR_VOTING_THEN_INPAINTING: color_voting_then_inpainting
-        }[self]
 
 def _create_tokens_visualization(tokens: list[MatLike], target_height: int = 80) -> MatLike:
     """Create a horizontal visualization of all tokens side-by-side.
@@ -90,7 +73,7 @@ class CaptchaPreprocessPipeline:
         self,
         image_dir: Path,
         cache_dir: Path,
-        preprocessing_method: PreprocessingMethod = PreprocessingMethod.COLOR_VOTING_THEN_INPAINTING
+        preprocessing_method: PreprocessingMethod = PreprocessingMethod.DEFAULT
     ):
         self.image_dir = image_dir
         self.cache_dir = cache_dir
@@ -159,6 +142,9 @@ class CaptchaPreprocessPipeline:
         # Not in cache, tokenize from raw image and save to cache
         img_bgr = self._load_preprocessed_image(img_path)
         if img_bgr is None:
+            failed_dir = self.cache_dir / "000_failed_preprocessing_error"
+            failed_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(img_path, failed_dir / img_path.name)
             return []
         
         # Tokenize
@@ -168,6 +154,7 @@ class CaptchaPreprocessPipeline:
             print(f"Error tokenizing {img_path.name}: {e}")
             failed_dir = self.cache_dir / "000_failed_tokenization_error"
             failed_dir.mkdir(parents=True, exist_ok=True)
+<<<<<<< HEAD
 
             # Create 3-row visualization: original, preprocessed, tokens (empty in this case)
             img_bgr_raw = cv2.imread(str(img_path))
@@ -183,6 +170,11 @@ class CaptchaPreprocessPipeline:
                                   constant_values=255)
 
             combined = np.vstack((img_raw_padded, img_proc_padded, tokens_padded))
+=======
+            # combine original and processed vertically
+            img_bgr_raw = cv2.imread(str(img_path))
+            combined = np.vstack((img_bgr_raw, img_bgr))
+>>>>>>> main
             cv2.imwrite(str(failed_dir / img_path.name), combined)
             return []
 
@@ -190,6 +182,7 @@ class CaptchaPreprocessPipeline:
         if len(tokens) != len(label):
             failed_dir = self.cache_dir / "000_failed_mismatch_token_count"
             failed_dir.mkdir(parents=True, exist_ok=True)
+<<<<<<< HEAD
 
             # Create 3-row visualization: original, preprocessed, tokens
             img_bgr_raw = cv2.imread(str(img_path))
@@ -205,6 +198,11 @@ class CaptchaPreprocessPipeline:
                                   constant_values=255)
 
             combined = np.vstack((img_raw_padded, img_proc_padded, tokens_padded))
+=======
+            # combine original and processed vertically
+            img_bgr_raw = cv2.imread(str(img_path))
+            combined = np.vstack((img_bgr_raw, img_bgr))
+>>>>>>> main
             cv2.imwrite(str(failed_dir / img_path.name), combined)
             return []
 
@@ -231,7 +229,7 @@ class CaptchaCharacterDataset(Dataset):
         self,
         image_dir: Path,
         cache_dir: Path,
-        preprocessing_method: PreprocessingMethod = PreprocessingMethod.COLOR_VOTING_THEN_INPAINTING,
+        preprocessing_method: PreprocessingMethod = PreprocessingMethod.DEFAULT,
         transform: transforms.Compose = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((32, 32)),
@@ -255,7 +253,8 @@ class CaptchaCharacterDataset(Dataset):
         self.transform = transform
         self.seed = SEED
         self.processor = CaptchaPreprocessPipeline(image_dir, cache_dir, preprocessing_method)
-
+        self.skipped = 0
+        
         # Load and prepare dataset
         print(f"Loading dataset from {image_dir}...")
         self.samples = self._prepare_dataset()
@@ -273,18 +272,17 @@ class CaptchaCharacterDataset(Dataset):
             raise ValueError(f"No PNG images found in {self.image_dir}")
 
         samples: list[tuple[MatLike, str]] = []
-        skipped = 0
 
         print(f"Processing {len(image_paths)} CAPTCHA images...")
 
         for img_path in tqdm(image_paths, desc="Tokenizing images"):
             tokens = self.processor.run(img_path)
             if len(tokens) == 0:
-                skipped += 1
+                self.skipped += 1
                 continue
             samples.extend(tokens)
 
-        print(f"Skipped {skipped} images (invalid/failed)")
+        print(f"Skipped {self.skipped} images (invalid/failed)")
         print(f"Total CAPTCHA samples: {len(samples)}")
 
         return samples
@@ -311,7 +309,7 @@ class CaptchaWordDataset(Dataset):
         self,
         image_dir: Path,
         cache_dir: Path,
-        preprocessing_method: PreprocessingMethod = PreprocessingMethod.COLOR_VOTING_THEN_INPAINTING,
+        preprocessing_method: PreprocessingMethod = PreprocessingMethod.DEFAULT,
         transform: transforms.Compose = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((32, 32)),
@@ -335,6 +333,7 @@ class CaptchaWordDataset(Dataset):
         self.transform = transform
         self.seed = SEED
         self.processor = CaptchaPreprocessPipeline(image_dir, cache_dir, preprocessing_method)
+        self.skipped = 0
 
         # Load and prepare dataset
         print(f"Loading dataset from {image_dir}...")
@@ -353,18 +352,18 @@ class CaptchaWordDataset(Dataset):
             raise ValueError(f"No PNG images found in {self.image_dir}")
 
         samples: list[list[tuple[MatLike, str]]] = []
-        skipped = 0
 
         print(f"Processing {len(image_paths)} CAPTCHA images...")
 
         for img_path in tqdm(image_paths, desc="Tokenizing images"):
+            # copy failed preprocessing images to a separate directory
             tokens = self.processor.run(img_path)
             if len(tokens) == 0:
-                skipped += 1
+                self.skipped += 1
                 continue
             samples.append(tokens)
 
-        print(f"Skipped {skipped} images (invalid/failed)")
+        print(f"Skipped {self.skipped} images (invalid/failed)")
         print(f"Total CAPTCHA word samples: {len(samples)}")
 
         return samples

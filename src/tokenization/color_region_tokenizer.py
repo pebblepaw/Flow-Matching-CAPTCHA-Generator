@@ -25,8 +25,7 @@ class ColorRegionTokenizer:
         padding: int = 5,
         min_saturation: int = 15,
         max_aspect_ratio: float = 8.0,
-        split_wide_regions: bool = True,
-        color_similarity_threshold: float = 40
+        split_wide_regions: bool = True
     ):
         self.white_threshold = white_threshold
         self.black_threshold = black_threshold
@@ -38,7 +37,6 @@ class ColorRegionTokenizer:
         self.min_saturation = min_saturation
         self.max_aspect_ratio = max_aspect_ratio
         self.split_wide_regions = split_wide_regions
-        self.color_similarity_threshold = color_similarity_threshold
 
     def create_foreground_mask(self, image: np.ndarray) -> np.ndarray:
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -118,205 +116,10 @@ class ColorRegionTokenizer:
 
         return result.astype(bool)
 
-    def _color_distance(self, color1: np.ndarray, color2: np.ndarray) -> float:
-        """Calculate Euclidean distance between two colors in RGB space."""
-        return np.linalg.norm(color1.astype(float) - color2.astype(float))
-
-    def _get_similar_color_mask(
-        self,
-        image: np.ndarray,
-        seed_color: np.ndarray,
-        fg_mask: np.ndarray,
-        color_threshold: float = 40
-    ) -> np.ndarray:
-        """Create a mask for pixels with similar color to the seed (vectorized)."""
-        # Vectorized color distance calculation
-        color_diff = np.linalg.norm(image.astype(float) - seed_color.astype(float), axis=2)
-        color_mask = (color_diff < color_threshold) & fg_mask
-        return color_mask
-
-    def remove_secondary_colors(
-        self,
-        token: np.ndarray,
-        white_value: int = 255,
-        hue_threshold: int = 5,
-        value_threshold: int = 100
-    ) -> np.ndarray:
-        """
-        Remove secondary colors from a token, keeping only the most dominant color.
-
-        Uses HSV color space to identify and remove pixels that differ from the
-        dominant color. Only removes small connected components to avoid hollowing
-        out characters with interior gaps (like O, 0, Q, 8).
-
-        Args:
-            token: Input token image (RGB)
-            white_value: Threshold for white/background pixels (default: 255)
-            hue_threshold: Max HSV Hue difference from dominant color (default: 5, out of 180)
-            value_threshold: Max HSV Value difference from dominant color (default: 100, out of 255)
-
-        Returns:
-            Cleaned token with only the dominant color preserved
-        """
-        result = token.copy()
-        gray = cv2.cvtColor(token, cv2.COLOR_RGB2GRAY)
-        fg_mask = gray < (white_value - 10)
-
-        if np.sum(fg_mask) == 0:
-            return result
-
-        fg_pixels = token[fg_mask]
-        if len(fg_pixels) == 0:
-            return result
-
-        # Find dominant color by clustering similar colors
-        visited = np.zeros(len(fg_pixels), dtype=bool)
-        color_clusters = []
-        color_similarity_threshold = 40
-
-        for i in range(len(fg_pixels)):
-            if visited[i]:
-                continue
-            pixel_color = fg_pixels[i]
-            distances = np.linalg.norm(fg_pixels.astype(float) - pixel_color.astype(float), axis=1)
-            similar = distances < color_similarity_threshold
-            visited[similar] = True
-            cluster_pixels = fg_pixels[similar]
-            cluster_color = np.median(cluster_pixels, axis=0).astype(np.uint8)
-            pixel_count = np.sum(similar)
-            color_clusters.append((cluster_color, pixel_count))
-
-        if len(color_clusters) == 0:
-            return result
-
-        color_clusters.sort(key=lambda x: x[1], reverse=True)
-        dominant_color = color_clusters[0][0]
-
-        dominant_hsv = cv2.cvtColor(dominant_color.reshape(1, 1, 3), cv2.COLOR_RGB2HSV)[0, 0]
-        dominant_hue = dominant_hsv[0]
-        dominant_saturation = dominant_hsv[1]
-        dominant_value = dominant_hsv[2]
-
-        token_hsv = cv2.cvtColor(token, cv2.COLOR_RGB2HSV)
-        token_hue = token_hsv[:, :, 0]
-        token_saturation = token_hsv[:, :, 1]
-        token_value = token_hsv[:, :, 2]
-
-        is_grayscale_dominant = dominant_saturation < 30
-
-        if is_grayscale_dominant:
-            value_diff = np.abs(token_value.astype(float) - dominant_value)
-            dissimilar_mask = ((token_saturation > 50) | (value_diff > value_threshold)) & fg_mask
-        else:
-            hue_diff = np.abs(token_hue.astype(float) - dominant_hue)
-            hue_diff = np.minimum(hue_diff, 180 - hue_diff)
-            value_diff = np.abs(token_value.astype(float) - dominant_value)
-            dissimilar_mask = ((hue_diff > hue_threshold) | (value_diff > value_threshold)) & fg_mask
-
-        # Only remove small dissimilar components (overlaps)
-        # Keep large components (legitimate character features like hollow interiors)
-        from scipy.ndimage import label as scipy_label
-        labeled, num_components = scipy_label(dissimilar_mask)
-        fg_count = np.sum(fg_mask)
-
-        for comp_id in range(1, num_components + 1):
-            comp_mask = (labeled == comp_id)
-            comp_size = np.sum(comp_mask)
-            if comp_size > 0.3 * fg_count:
-                dissimilar_mask = dissimilar_mask & ~comp_mask
-
-        result[dissimilar_mask] = [255, 255, 255]
-        return result
-
-    def extract_connected_components_by_color(
-        self,
-        image: np.ndarray,
-        mask: np.ndarray
-    ) -> List[Tuple[int, int, int, int, np.ndarray]]:
-        """Extract connected components by grouping similar colors using flood fill."""
-        structure = np.ones((3, 3), dtype=bool)
-        labeled_mask, num_components = scipy_label(mask.astype(bool), structure=structure)
-
-        components_info = []
-
-        for component_id in range(1, num_components + 1):
-            component_mask = labeled_mask == component_id
-            rows, cols = np.where(component_mask)
-
-            if len(rows) == 0:
-                continue
-
-            # Get the dominant color of this component
-            component_pixels = image[component_mask]
-
-            # Filter out near-white and near-black pixels for color calculation
-            hsv_pixels = cv2.cvtColor(component_pixels.reshape(-1, 1, 3), cv2.COLOR_RGB2HSV).reshape(-1, 3)
-            valid_color_mask = (hsv_pixels[:, 1] > 20) & (hsv_pixels[:, 2] > 30) & (hsv_pixels[:, 2] < 240)
-
-            if np.sum(valid_color_mask) > 0:
-                dominant_color = np.median(component_pixels[valid_color_mask], axis=0)
-            else:
-                dominant_color = np.median(component_pixels, axis=0)
-
-            # Now flood fill from this component using similar colors
-            similar_color_mask = self._get_similar_color_mask(image, dominant_color, mask, color_threshold=self.color_similarity_threshold)
-
-            # Intersect with the foreground mask
-            color_component_mask = similar_color_mask & mask
-
-            # Label the color-based mask to get connected components
-            labeled_color, num_color_comps = scipy_label(color_component_mask, structure=structure)
-
-            for color_comp_id in range(1, num_color_comps + 1):
-                comp_mask = labeled_color == color_comp_id
-                area = np.sum(comp_mask)
-
-                if area < self.min_region_area or area > self.max_region_area:
-                    continue
-
-                comp_rows, comp_cols = np.where(comp_mask)
-                if len(comp_rows) == 0:
-                    continue
-
-                y_min, y_max = comp_rows.min(), comp_rows.max()
-                x_min, x_max = comp_cols.min(), comp_cols.max()
-
-                width = x_max - x_min + 1
-                height = y_max - y_min + 1
-
-                if height > 0:
-                    aspect_ratio = width / height
-                    if aspect_ratio > self.max_aspect_ratio:
-                        continue
-
-                h, w = mask.shape
-                y_min_pad = max(0, y_min - self.padding)
-                y_max_pad = min(h - 1, y_max + self.padding)
-                x_min_pad = max(0, x_min - self.padding)
-                x_max_pad = min(w - 1, x_max + self.padding)
-
-                width_pad = x_max_pad - x_min_pad
-                height_pad = y_max_pad - y_min_pad
-
-                components_info.append((x_min_pad, y_min_pad, width_pad, height_pad, dominant_color))
-
-        # Remove duplicates (same bounding box)
-        unique_components = []
-        seen_boxes = set()
-        for comp in components_info:
-            box = comp[:4]
-            if box not in seen_boxes:
-                seen_boxes.add(box)
-                unique_components.append(comp)
-
-        unique_components.sort(key=lambda b: b[0])
-        return unique_components
-
     def extract_connected_components(
         self,
         mask: np.ndarray
     ) -> List[Tuple[int, int, int, int]]:
-        """Original connected component extraction (kept for compatibility)."""
         structure = np.ones((3, 3), dtype=bool)
         labeled_mask, num_components = scipy_label(mask.astype(bool), structure=structure)
 
@@ -745,29 +548,11 @@ class ColorRegionTokenizer:
     def extract_region_images(
         self,
         image: np.ndarray,
-        bboxes: List[Tuple[int, int, int, int]],
-        remove_other_colors: bool = False
+        bboxes: List[Tuple[int, int, int, int]]
     ) -> List[np.ndarray]:
-        """Extract region images, optionally removing pixels with different colors."""
         regions = []
-        for bbox_info in bboxes:
-            # Handle both (x, y, w, h) and (x, y, w, h, color) formats
-            if len(bbox_info) == 5:
-                x, y, w, h, dominant_color = bbox_info
-            else:
-                x, y, w, h = bbox_info
-                dominant_color = None
-
-            region = image[y:y+h, x:x+w, :].copy()
-
-            # Remove other colors if requested and dominant color is available
-            if remove_other_colors and dominant_color is not None:
-                # Vectorized: create a mask for pixels similar to the dominant color
-                color_diff = np.linalg.norm(region.astype(float) - dominant_color.astype(float), axis=2)
-                keep_mask = color_diff < 40
-
-                # Set non-matching pixels to white
-                region[~keep_mask] = [255, 255, 255]
+        for x, y, w, h in bboxes:
+            region = image[y:y+h, x:x+w, :]
 
             if self.normalize_regions and region.shape[0] > 0:
                 current_h, current_w = region.shape[:2]
@@ -779,30 +564,14 @@ class ColorRegionTokenizer:
 
         return regions
 
-    def tokenize(self, image: np.ndarray, return_mask: bool = False, use_color_segmentation: bool = False, remove_other_colors: bool = False) -> list[MatLike] | tuple[list[MatLike], MatLike]:
-        """
-        Tokenize image into character regions.
-
-        Args:
-            image: Input RGB image
-            return_mask: Whether to return foreground mask
-            use_color_segmentation: If True, use color-based connected components with flood fill (experimental)
-                                   If False (default), use original split/merge method (better performance)
-            remove_other_colors: If True, remove pixels with different colors from each token (only used with color segmentation)
-        """
+    def tokenize(self, image: np.ndarray, return_mask: bool = False) -> list[MatLike] | tuple[list[MatLike], MatLike]:
         fg_mask = self.create_foreground_mask(image)
+        bboxes = self.extract_connected_components(fg_mask)
 
-        if use_color_segmentation:
-            # Use new color-based segmentation
-            bboxes = self.extract_connected_components_by_color(image, fg_mask)
-            # Extract regions with color filtering
-            regions = self.extract_region_images(image, bboxes, remove_other_colors=remove_other_colors)
-        else:
-            # Use original method
-            bboxes = self.extract_connected_components(fg_mask)
-            bboxes = self._split_different_color_tokens(image, bboxes, fg_mask)
-            bboxes = self._merge_same_color_tokens(image, bboxes)
-            regions = self.extract_region_images(image, bboxes)
+        bboxes = self._split_different_color_tokens(image, bboxes, fg_mask)
+        bboxes = self._merge_same_color_tokens(image, bboxes)
+
+        regions = self.extract_region_images(image, bboxes)
 
         if return_mask:
             return regions, fg_mask

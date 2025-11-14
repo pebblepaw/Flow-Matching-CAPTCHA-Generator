@@ -99,7 +99,6 @@ def _single_voting_pass(
 
 def inpainting_remove_black_hairline(
     image: MatLike,
-    black_threshold: int = 50,
     inpaint_radius: int = 3
 ) -> MatLike:
     """
@@ -122,7 +121,7 @@ def inpainting_remove_black_hairline(
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Create mask of black pixels
-    black_mask = (gray < black_threshold).astype(np.uint8) * 255
+    black_mask = (gray == 0).astype(np.uint8) * 255
 
     # Apply inpainting
     result = cv2.inpaint(image, black_mask, inpaint_radius, cv2.INPAINT_TELEA)
@@ -130,13 +129,13 @@ def inpainting_remove_black_hairline(
     return result
 
 
-def color_voting_remove_black_hairline(image: MatLike, black_threshold: int = 50) -> MatLike:
+def color_voting_remove_black_hairline(image: MatLike) -> MatLike:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    black_mask = (gray < black_threshold).astype(np.uint8) * 255
+    black_mask = (gray == 0).astype(np.uint8) * 255
     # Use color voting with 2 iterations (proven effective)
     return color_voting_propagation(image, mask=black_mask, iterations=2)
 
-def brighten_non_black_pixels(image: MatLike, black_threshold: int = 50, brightness_boost: int = 30) -> MatLike:
+def brighten_non_black_pixels(image: MatLike, brightness_boost: int = 30) -> MatLike:
     """
     Increase the brightness (Value in HSV) of non-black pixels.
 
@@ -157,7 +156,7 @@ def brighten_non_black_pixels(image: MatLike, black_threshold: int = 50, brightn
 
     # Identify non-black pixels
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    non_black_mask = gray >= black_threshold
+    non_black_mask = gray != 0
 
     # Boost the Value channel for non-black pixels
     v_boosted = v.copy().astype(np.int16)
@@ -170,62 +169,9 @@ def brighten_non_black_pixels(image: MatLike, black_threshold: int = 50, brightn
 
     return result
 
-
-def should_use_inpainting(image: MatLike, black_threshold: int = 50) -> bool:
-    """
-    Determine if inpainting is safe to use on this image.
-
-    Inpainting should be avoided when there are legitimate black/dark characters,
-    as it will smear them. It's safe when:
-    1. Very few black pixels remain (mostly colored characters)
-    2. Black pixels are thin and scattered (hairlines, not characters)
-
-    Args:
-        image: BGR image
-        black_threshold: Pixels darker than this are considered black
-
-    Returns:
-        True if inpainting is safe, False otherwise
-    """
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    black_mask = (gray < black_threshold)
-
-    total_pixels = gray.shape[0] * gray.shape[1]
-    black_pixel_count = np.sum(black_mask)
-    black_percentage = (black_pixel_count / total_pixels) * 100
-
-    # If more than 5% of pixels are black, there might be black characters
-    if black_percentage > 5.0:
-        return False
-
-    # Check if black pixels form large connected components (characters)
-    # vs small scattered ones (hairlines)
-    from scipy.ndimage import label as scipy_label
-    labeled, num_components = scipy_label(black_mask)
-
-    if num_components == 0:
-        return True  # No black pixels, safe to inpaint
-
-    # Check size of largest black component
-    component_sizes = []
-    for i in range(1, num_components + 1):
-        size = np.sum(labeled == i)
-        component_sizes.append(size)
-
-    if len(component_sizes) > 0:
-        largest_component = max(component_sizes)
-        # If largest black component is more than 100 pixels, it's likely a character
-        if largest_component > 100:
-            return False
-
-    return True
-
-
-def color_voting_then_inpainting(
+def color_voting_inpaint(
     image: MatLike,
-    black_threshold: int = 50,
-    inpaint_radius: int = 2,
-    adaptive: bool = True
+    inpaint_radius: int = 2
 ) -> MatLike:
     """
     Apply color voting followed by inpainting for hairline removal.
@@ -235,87 +181,73 @@ def color_voting_then_inpainting(
 
     Args:
         image: BGR image
-        black_threshold: Pixels darker than this are considered black
         inpaint_radius: Radius for inpainting (smaller = weaker effect, default: 2)
-        adaptive: If True, only apply inpainting when safe (recommended)
 
     Returns:
         Image with hairlines removed using both methods (or just color voting if unsafe)
     """
-    result_voting = color_voting_remove_black_hairline(image, black_threshold=black_threshold)
-
-    # Check if inpainting is safe to apply
-    if adaptive and not should_use_inpainting(result_voting, black_threshold=black_threshold):
-        # Skip inpainting, just return color voting result
-        return result_voting
+    result_voting = color_voting_remove_black_hairline(image)
 
     result_inpainting = inpainting_remove_black_hairline(
         result_voting,
-        black_threshold=black_threshold,
         inpaint_radius=inpaint_radius
     )
     return result_inpainting
 
 
-def color_voting_brighten_then_inpaint(
+def color_voting_inpaint_dilate(
     image: MatLike,
-    black_threshold: int = 50,
     inpaint_radius: int = 2,
     brightness_boost: int = 30,
-    brighten_threshold: int = None,
-    inpaint_threshold: int = None
 ) -> MatLike:
     """
-    Apply color voting, brighten non-black pixels, then inpaint.
+    Apply color voting, then inpaint and dilate.
 
     This approach protects dark characters by brightening them before inpainting,
     so they won't be treated as black hairlines.
 
     Args:
         image: BGR image
-        black_threshold: Default threshold for both brightening and inpainting (default: 50)
         inpaint_radius: Radius for inpainting (smaller = weaker effect, default: 2)
         brightness_boost: Amount to increase brightness of non-black pixels (default: 30)
-        brighten_threshold: Threshold for identifying pixels to brighten (if None, uses black_threshold)
-                           Higher values = more pixels get brightened
-        inpaint_threshold: Threshold for inpainting (if None, uses black_threshold)
-                          Lower values = fewer pixels get inpainted (more conservative)
 
     Returns:
         Image with hairlines removed using brightening + inpainting
     """
-    # Use separate thresholds if provided, otherwise fall back to black_threshold
-    brighten_thresh = brighten_threshold if brighten_threshold is not None else black_threshold
-    inpaint_thresh = inpaint_threshold if inpaint_threshold is not None else black_threshold
 
     # Step 1: Color voting to remove hairlines
-    result_voting = color_voting_remove_black_hairline(image, black_threshold=black_threshold)
+    result_voting = color_voting_remove_black_hairline(image)
 
-    # Step 2: Brighten non-black pixels to protect them from inpainting
-    # Use higher threshold to catch more dark pixels
-    result_brightened = brighten_non_black_pixels(
-        result_voting,
-        black_threshold=brighten_thresh,
-        brightness_boost=brightness_boost
-    )
-
-    # Step 3: Inpaint (only truly black pixels will be affected)
-    # Use lower threshold to be more conservative
+    # Step 2: Inpaint (only truly black pixels will be affected)
     result_inpainting = inpainting_remove_black_hairline(
-        result_brightened,
-        black_threshold=inpaint_thresh,
+        result_voting,
         inpaint_radius=inpaint_radius
     )
 
-    return result_inpainting
+    # Step 3: Dilate
+    result_dilated = color_preserving_dilation(result_inpainting)
+    return result_dilated
 
+def color_voting_brighten_inpaint_dilate(
+    image: MatLike,
+    inpaint_radius: int = 2,
+    brightness_boost: int = 30,
+) -> MatLike:
+    """
+    Apply color voting, brighten non-black pixels, then inpaint and dilate.
+    """
+    result_voting = color_voting_remove_black_hairline(image)
+    result_brightened = brighten_non_black_pixels(result_voting, brightness_boost=brightness_boost)
+    result_inpainting = inpainting_remove_black_hairline(result_brightened, inpaint_radius=inpaint_radius)
+    result_dilated = color_preserving_dilation(result_inpainting)
+    return result_dilated
 
 def color_preserving_dilation(
     image: MatLike,
     kernel_size: int = 3,
-    white_threshold: int = 240,
+    white_threshold: int = 255, # in this case, we only have pure white as the background
     core_threshold: int = 200,
-    require_no_white_neighbors: bool = True
+    require_no_white_neighbors: bool = False
 ) -> MatLike:
     """
     Apply selective dilation that expands from character cores outward.
@@ -333,7 +265,7 @@ def color_preserving_dilation(
     Args:
         image: RGB or BGR image
         kernel_size: Size of dilation kernel (default: 3)
-        white_threshold: Pixels brighter than this are considered white (default: 240)
+        white_threshold: Pixels brighter than this are considered white (default: 255)
         core_threshold: Pixels darker than this are considered "core" (default: 200)
         require_no_white_neighbors: Only dilate pixels with no white neighbors (default: True)
                                      This prevents filling gaps in characters like "0"
