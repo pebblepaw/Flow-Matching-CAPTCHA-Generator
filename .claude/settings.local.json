@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(del:*)",
+      "Bash(python visualize_pipeline.py:*)",
+      "Bash(python:*)",
+      "Bash(nul)",
+      "Bash(uv pip:*)",
+      "Bash(findstr:*)",
+      "Bash(git add:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git stash:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

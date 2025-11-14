@@ -1,5 +1,9 @@
 import shutil
+import sys
 from pathlib import Path
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from cv2.typing import MatLike
 from torch.utils.data import Dataset, DataLoader, random_split
