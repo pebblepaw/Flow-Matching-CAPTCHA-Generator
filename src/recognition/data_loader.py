@@ -1,7 +1,13 @@
+import shutil
+import sys
+from pathlib import Path
 from enum import Enum
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from cv2.typing import MatLike
 from torch.utils.data import Dataset, DataLoader, random_split
-from pathlib import Path
 import numpy as np
 import cv2
 import torch
@@ -25,6 +31,60 @@ class PreprocessingMethod(Enum):
             PreprocessingMethod.COLOR_VOTING_THEN_INPAINTING: color_voting_then_inpainting
         }[self]
 
+def _create_tokens_visualization(tokens: list[MatLike], target_height: int = 80) -> MatLike:
+    """Create a horizontal visualization of all tokens side-by-side.
+
+    Args:
+        tokens: List of token images (BGR)
+        target_height: Height to resize tokens to (default: 80)
+
+    Returns:
+        Combined image with all tokens side-by-side, separated by red lines
+    """
+    if len(tokens) == 0:
+        # Return white canvas with "NO TOKENS" text if no tokens
+        empty = np.ones((target_height, 400, 3), dtype=np.uint8) * 255
+        cv2.putText(empty, "NO TOKENS EXTRACTED", (10, target_height // 2),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+        return empty
+
+    # Resize all tokens to target height while preserving aspect ratio
+    resized_tokens = []
+    for token in tokens:
+        h, w = token.shape[:2]
+        if h != target_height:
+            scale = target_height / h
+            new_w = max(1, int(w * scale))
+            resized = cv2.resize(token, (new_w, target_height))
+            resized_tokens.append(resized)
+        else:
+            resized_tokens.append(token)
+
+    # Calculate total width with spacing (3px for red separator lines)
+    spacing = 3
+    total_width = sum(t.shape[1] for t in resized_tokens) + spacing * (len(resized_tokens) + 1)
+
+    # Create white canvas
+    canvas = np.ones((target_height, total_width, 3), dtype=np.uint8) * 255
+
+    # Place tokens with red separator lines
+    x_offset = spacing
+    for i, token in enumerate(resized_tokens):
+        w = token.shape[1]
+
+        # Draw red separator line before this token (except for first token)
+        if i > 0:
+            # Red line is at x_offset - 1 (center of spacing)
+            cv2.line(canvas, (x_offset - 2, 0), (x_offset - 2, target_height - 1),
+                    (0, 0, 255), 1)  # BGR: (0, 0, 255) = Red
+
+        # Place token
+        canvas[:, x_offset:x_offset+w] = token
+        x_offset += w + spacing
+
+    return canvas
+
+
 class CaptchaPreprocessPipeline:
     def __init__(
         self,
@@ -36,7 +96,7 @@ class CaptchaPreprocessPipeline:
         self.cache_dir = cache_dir
         self.preprocessing_method = preprocessing_method
 
-        # Initialize tokenizer
+        # Initialize tokenizer with optimized settings
         self.tokenizer = ColorRegionTokenizer(
             white_threshold=200,
             black_threshold=50,
@@ -106,10 +166,46 @@ class CaptchaPreprocessPipeline:
             tokens: list[MatLike] = self.tokenizer.tokenize(img_bgr) # type: ignore
         except Exception as e:
             print(f"Error tokenizing {img_path.name}: {e}")
+            failed_dir = self.cache_dir / "000_failed_tokenization_error"
+            failed_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create 3-row visualization: original, preprocessed, tokens (empty in this case)
+            img_bgr_raw = cv2.imread(str(img_path))
+            tokens_viz = _create_tokens_visualization([], target_height=img_bgr.shape[0])
+
+            # Pad images to same width
+            max_width = max(img_bgr_raw.shape[1], img_bgr.shape[1], tokens_viz.shape[1])
+            img_raw_padded = np.pad(img_bgr_raw, ((0, 0), (0, max_width - img_bgr_raw.shape[1]), (0, 0)),
+                                   constant_values=255)
+            img_proc_padded = np.pad(img_bgr, ((0, 0), (0, max_width - img_bgr.shape[1]), (0, 0)),
+                                    constant_values=255)
+            tokens_padded = np.pad(tokens_viz, ((0, 0), (0, max_width - tokens_viz.shape[1]), (0, 0)),
+                                  constant_values=255)
+
+            combined = np.vstack((img_raw_padded, img_proc_padded, tokens_padded))
+            cv2.imwrite(str(failed_dir / img_path.name), combined)
             return []
 
         # Only use if token count matches label length
         if len(tokens) != len(label):
+            failed_dir = self.cache_dir / "000_failed_mismatch_token_count"
+            failed_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create 3-row visualization: original, preprocessed, tokens
+            img_bgr_raw = cv2.imread(str(img_path))
+            tokens_viz = _create_tokens_visualization(tokens, target_height=img_bgr.shape[0])
+
+            # Pad images to same width
+            max_width = max(img_bgr_raw.shape[1], img_bgr.shape[1], tokens_viz.shape[1])
+            img_raw_padded = np.pad(img_bgr_raw, ((0, 0), (0, max_width - img_bgr_raw.shape[1]), (0, 0)),
+                                   constant_values=255)
+            img_proc_padded = np.pad(img_bgr, ((0, 0), (0, max_width - img_bgr.shape[1]), (0, 0)),
+                                    constant_values=255)
+            tokens_padded = np.pad(tokens_viz, ((0, 0), (0, max_width - tokens_viz.shape[1]), (0, 0)),
+                                  constant_values=255)
+
+            combined = np.vstack((img_raw_padded, img_proc_padded, tokens_padded))
+            cv2.imwrite(str(failed_dir / img_path.name), combined)
             return []
 
         # Add each character token with its label
@@ -334,7 +430,7 @@ def create_dataloaders(
 
 if __name__ == "__main__":
     train_loader, val_loader = create_dataloaders(
-        img_dir=Path("data/raw/train"),
+        img_dir=Path("data/filtered/train"),
         img_cache_dir=Path("data/processed/train_cache"),
         train_val_ratio=0.8,
         batch_size=64,
