@@ -9,7 +9,6 @@ from cv2.typing import MatLike
 import numpy as np
 from typing import List, Tuple, Dict, Optional
 from scipy.ndimage import label as scipy_label
-import matplotlib.pyplot as plt
 
 
 class ColorRegionTokenizer:
@@ -24,8 +23,7 @@ class ColorRegionTokenizer:
         normalize_regions: bool = True,
         padding: int = 5,
         min_saturation: int = 15,
-        max_aspect_ratio: float = 8.0,
-        split_wide_regions: bool = True
+        max_aspect_ratio: float = 8.0
     ):
         self.white_threshold = white_threshold
         self.black_threshold = black_threshold
@@ -36,7 +34,6 @@ class ColorRegionTokenizer:
         self.padding = padding
         self.min_saturation = min_saturation
         self.max_aspect_ratio = max_aspect_ratio
-        self.split_wide_regions = split_wide_regions
 
     def create_foreground_mask(self, image: np.ndarray) -> np.ndarray:
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -62,59 +59,6 @@ class ColorRegionTokenizer:
         foreground_mask = cv2.erode(foreground_mask, kernel_tiny, iterations=1)
 
         return foreground_mask.astype(bool)
-
-    def _remove_thin_connections(self, mask: np.ndarray) -> np.ndarray:
-        if np.sum(mask) == 0:
-            return mask
-
-        kernel_vert = np.ones((3, 1), np.uint8)
-        eroded = cv2.erode(mask, kernel_vert, iterations=1)
-
-        if np.sum(eroded) < np.sum(mask) * 0.5:
-            kernel_small = np.ones((2, 1), np.uint8)
-            eroded = cv2.erode(mask, kernel_small, iterations=1)
-
-        if np.sum(eroded) > 0:
-            labeled, num = scipy_label(eroded)
-            result = np.zeros_like(mask)
-            for label_id in range(1, num + 1):
-                component = (labeled == label_id).astype(np.uint8)
-                dilated_comp = cv2.dilate(component, kernel_vert, iterations=1)
-                result = result | (dilated_comp & mask)
-            return result
-        else:
-            return mask
-
-    def _remove_thin_bridges(self, mask: np.ndarray) -> np.ndarray:
-        if np.sum(mask) == 0:
-            return mask
-
-        kernel = np.ones((2, 2), np.uint8)
-        eroded = cv2.erode(mask, kernel, iterations=1)
-
-        if np.sum(eroded) == 0:
-            return mask
-
-        labeled, num = scipy_label(eroded)
-        if num == 0:
-            return mask
-
-        _, original_num = scipy_label(mask)
-        if num <= original_num:
-            eroded = cv2.erode(mask, kernel, iterations=2)
-            if np.sum(eroded) == 0:
-                return mask
-            labeled, num = scipy_label(eroded)
-            if num <= original_num:
-                return mask
-
-        result = np.zeros_like(mask)
-        for label_id in range(1, num + 1):
-            component = (labeled == label_id).astype(np.uint8)
-            dilated = cv2.dilate(component, kernel, iterations=1)
-            result = result | (dilated & mask)
-
-        return result.astype(bool)
 
     def extract_connected_components(
         self,
@@ -156,183 +100,6 @@ class ColorRegionTokenizer:
         bboxes.sort(key=lambda b: b[0])
         return bboxes
 
-    def _split_wide_regions(
-        self,
-        bboxes: List[Tuple[int, int, int, int]],
-        mask: np.ndarray
-    ) -> List[Tuple[int, int, int, int]]:
-        result = []
-
-        for x, y, w, h in bboxes:
-            if w > 1.5 * h:
-                region_mask = mask[y:y+h, x:x+w].astype(np.uint8)
-                split_boxes = self._try_erosion_split(region_mask, x, y, w, h)
-                if split_boxes and len(split_boxes) > 1:
-                    result.extend(split_boxes)
-                else:
-                    result.append((x, y, w, h))
-            else:
-                result.append((x, y, w, h))
-
-        return result
-
-    def _try_erosion_split(
-        self,
-        region_mask: np.ndarray,
-        base_x: int,
-        base_y: int,
-        w: int,
-        h: int
-    ) -> List[Tuple[int, int, int, int]]:
-        kernel = np.ones((4, 1), np.uint8)
-        eroded = cv2.erode(region_mask, kernel, iterations=3)
-        labeled, num = scipy_label(eroded)
-
-        if num <= 1:
-            return []
-
-        boxes = []
-        for label_id in range(1, num + 1):
-            component = labeled == label_id
-            rows, cols = np.where(component)
-
-            if len(rows) > 0:
-                y_min, y_max = rows.min(), rows.max()
-                x_min, x_max = cols.min(), cols.max()
-                seg_w = x_max - x_min + 1
-                seg_h = y_max - y_min + 1
-
-                if seg_w > h * 0.15 and seg_h > h * 0.3:
-                    boxes.append((base_x + x_min, base_y + y_min, seg_w, seg_h))
-
-        boxes.sort(key=lambda b: b[0])
-        return boxes if len(boxes) > 1 else []
-
-    def _try_projection_split(
-        self,
-        region_mask: np.ndarray,
-        base_x: int,
-        base_y: int,
-        w: int,
-        h: int
-    ) -> List[Tuple[int, int, int, int]]:
-        projection = np.sum(region_mask, axis=0)
-        thresholds = [
-            np.mean(projection[projection > 0]) * 0.15,
-            np.max(projection) * 0.10,
-            np.percentile(projection[projection > 0], 25) * 0.5
-        ]
-
-        for threshold in thresholds:
-            valleys = projection < threshold
-            split_points = []
-            in_valley = False
-            valley_start = 0
-
-            for i, is_valley in enumerate(valleys):
-                if is_valley and not in_valley:
-                    valley_start = i
-                    in_valley = True
-                elif not is_valley and in_valley:
-                    valley_width = i - valley_start
-                    if valley_width >= 2:
-                        valley_mid = (valley_start + i) // 2
-                        split_points.append(valley_mid)
-                    in_valley = False
-
-            if split_points:
-                boxes = []
-                prev_x = 0
-
-                for split_x in split_points + [w]:
-                    segment_width = split_x - prev_x
-                    if segment_width > h * 0.15:
-                        boxes.append((base_x + prev_x, base_y, segment_width, h))
-                    prev_x = split_x
-
-                if len(boxes) > 1:
-                    return boxes
-
-        return []
-
-    def _try_gradient_split(
-        self,
-        region_mask: np.ndarray,
-        base_x: int,
-        base_y: int,
-        w: int,
-        h: int
-    ) -> List[Tuple[int, int, int, int]]:
-        projection = np.sum(region_mask, axis=0)
-        gradient = np.diff(projection, prepend=projection[0])
-        smoothed_grad = np.convolve(gradient, np.ones(3)/3, mode='same')
-        threshold = -np.std(smoothed_grad) * 0.5
-        neg_gradients = smoothed_grad < threshold
-        split_candidates = np.where(neg_gradients)[0]
-
-        if len(split_candidates) == 0:
-            return []
-
-        split_points = []
-        last_split = -999
-
-        for candidate in split_candidates:
-            if candidate - last_split > h * 0.3:
-                split_points.append(candidate)
-                last_split = candidate
-
-        if split_points:
-            boxes = []
-            prev_x = 0
-
-            for split_x in split_points + [w]:
-                segment_width = split_x - prev_x
-                if segment_width > h * 0.15:
-                    boxes.append((base_x + prev_x, base_y, segment_width, h))
-                prev_x = split_x
-
-            if len(boxes) > 1:
-                return boxes
-
-        return []
-
-    def merge_overlapping_boxes(
-        self,
-        bboxes: List[Tuple[int, int, int, int]]
-    ) -> List[Tuple[int, int, int, int]]:
-        if len(bboxes) <= 1:
-            return bboxes
-
-        merged = []
-        current = list(bboxes[0])
-
-        for box in bboxes[1:]:
-            x, y, w, h = box
-            curr_x, curr_y, curr_w, curr_h = current
-            overlap = False
-            curr_right = curr_x + curr_w
-            box_right = x + w
-
-            if not (x > curr_right or curr_x > box_right):
-                curr_bottom = curr_y + curr_h
-                box_bottom = y + h
-
-                if not (y > curr_bottom or curr_y > box_bottom):
-                    overlap = True
-
-            if overlap:
-                new_x = min(curr_x, x)
-                new_y = min(curr_y, y)
-                new_right = max(curr_right, box_right)
-                new_bottom = max(curr_bottom, box_bottom)
-                current = [new_x, new_y, new_right - new_x, new_bottom - new_y]
-            else:
-                merged.append(tuple(current))
-                current = list(box)
-
-        merged.append(tuple(current))
-        return merged
-
     def _get_dominant_color(self, image: np.ndarray, bbox: Tuple[int, int, int, int]) -> np.ndarray:
         x, y, w, h = bbox
         region = image[y:y+h, x:x+w, :]
@@ -347,10 +114,6 @@ class ColorRegionTokenizer:
         colored_pixels = region[colored_mask]
         median_color = np.median(colored_pixels, axis=0)
         return median_color
-
-    def _colors_match(self, color1: np.ndarray, color2: np.ndarray, threshold: float = 30) -> bool:
-        distance = np.linalg.norm(color1 - color2)
-        return distance < threshold
 
     def _merge_same_color_tokens(
         self,
@@ -576,118 +339,3 @@ class ColorRegionTokenizer:
         if return_mask:
             return regions, fg_mask
         return regions
-
-    def visualize_tokens(
-        self,
-        image: np.ndarray,
-        tokens: List[np.ndarray],
-        title: str = "Color Region Tokens",
-        show_mask: bool = True
-    ):
-        n_tokens = len(tokens)
-        n_rows = 3 if show_mask else 2
-        fig, axes = plt.subplots(n_rows, max(n_tokens, 1),
-                                 figsize=(2 * max(n_tokens, 1), 2 * n_rows))
-
-        if n_tokens == 1:
-            axes = axes.reshape(n_rows, 1)
-
-        for ax in axes[0]:
-            ax.axis('off')
-        axes[0, 0].imshow(image)
-        axes[0, 0].set_title("Original Image")
-
-        if show_mask:
-            for ax in axes[1]:
-                ax.axis('off')
-            fg_mask = self.create_foreground_mask(image)
-            axes[1, 0].imshow(fg_mask, cmap='gray')
-            axes[1, 0].set_title("Foreground Mask")
-
-        token_row = 2 if show_mask else 1
-        for i, token in enumerate(tokens):
-            if i < n_tokens:
-                axes[token_row, i].imshow(token)
-                axes[token_row, i].set_title(f"Token {i+1}\n{token.shape[1]}×{token.shape[0]}")
-                axes[token_row, i].axis('off')
-
-        plt.suptitle(title, fontsize=14)
-        plt.tight_layout()
-        return fig
-
-    def visualize_with_boxes(
-        self,
-        image: np.ndarray,
-        tokens: List[np.ndarray]
-    ):
-        fg_mask = self.create_foreground_mask(image)
-        bboxes = self.extract_connected_components(fg_mask)
-        bboxes = self.merge_overlapping_boxes(bboxes)
-        img_with_boxes = image.copy()
-
-        for i, (x, y, w, h) in enumerate(bboxes):
-            color = plt.cm.tab10(i % 10)[:3]
-            color = tuple(int(c * 255) for c in color)
-            cv2.rectangle(img_with_boxes, (x, y), (x+w, y+h), color, 2)
-            cv2.putText(img_with_boxes, f"{i+1}", (x, y-5),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-        axes[0].imshow(image)
-        axes[0].set_title("Original")
-        axes[0].axis('off')
-        axes[1].imshow(img_with_boxes)
-        axes[1].set_title(f"Detected Regions ({len(bboxes)} tokens)")
-        axes[1].axis('off')
-        plt.tight_layout()
-        return fig
-
-
-if __name__ == "__main__":
-    import os
-
-    print("Color Region Tokenization Demo")
-    print("=" * 70)
-
-    tokenizer = ColorRegionTokenizer(
-        white_threshold=200,
-        black_threshold=50,
-        min_region_area=100,
-        max_region_area=10000,
-        target_height=80,
-        padding=5,
-        min_saturation=15,
-        max_aspect_ratio=8.0,
-        split_wide_regions=True
-    )
-
-    train_dir = "data/raw/train"
-    sample_files = sorted([f for f in os.listdir(train_dir) if f.endswith('.png')])[:5]
-
-    for filename in sample_files:
-        img_path = os.path.join(train_dir, filename)
-        img = cv2.imread(img_path)
-        label = filename.split('-')[0]
-        tokens = tokenizer.tokenize(img)
-
-        print(f"{filename} -> '{label}'")
-        print(f"  Expected: {len(label)} characters")
-        print(f"  Extracted: {len(tokens)} regions")
-        print(f"  Shapes: {[f'{t.shape[1]}x{t.shape[0]}' for t in tokens]}")
-
-        if sample_files.index(filename) < 3:
-            fig1 = tokenizer.visualize_tokens(img, tokens,
-                                             title=f"'{label}' - Color Regions",
-                                             show_mask=True)
-            plt.savefig(f"color_tokens_{label}.png", dpi=150, bbox_inches='tight')
-            plt.close()
-
-            fig2 = tokenizer.visualize_with_boxes(img, tokens)
-            plt.savefig(f"color_boxes_{label}.png", dpi=150, bbox_inches='tight')
-            plt.close()
-
-            print(f"  Saved visualizations")
-        print()
-
-    print("=" * 70)
-    print("Complete!")
