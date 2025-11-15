@@ -220,44 +220,27 @@ def plot_analysis(
 ):
     """Create comprehensive visualization of class balance analysis."""
 
-    fig = plt.figure(figsize=(16, 6))
-    gs = fig.add_gridspec(1, 2, hspace=0.3, wspace=0.3)
+    fig = plt.figure(figsize=(18, 4))
 
-    # 1. Class distribution (bar chart) - from entire filtered dataset
-    ax1 = fig.add_subplot(gs[0, 0])
+    # Class distribution (bar chart) - from entire filtered dataset, shown as percentage
+    ax1 = fig.add_subplot(1, 1, 1)
     chars = sorted(balance_metrics['distribution'].keys())
     counts = [balance_metrics['distribution'][c] for c in chars]
+    total = balance_metrics['total_chars']
+    percentages = [(count / total) * 100 for count in counts]
     colors = ['#1f77b4' if c.isdigit() else '#ff7f0e' for c in chars]
-    ax1.bar(chars, counts, color=colors)
+    ax1.bar(chars, percentages, color=colors)
     ax1.set_xlabel('Character', fontsize=12)
-    ax1.set_ylabel('Frequency', fontsize=12)
+    ax1.set_ylabel('Frequency (%)', fontsize=12)
     ax1.set_title('Class Distribution (Blue=Digits, Orange=Letters)', fontsize=14, weight='bold')
-    ax1.axhline(y=balance_metrics['mean_count'], color='r', linestyle='--',
-                label=f"Mean: {balance_metrics['mean_count']:.1f}", linewidth=2)
+    mean_percentage = (balance_metrics['mean_count'] / total) * 100
+    ax1.axhline(y=mean_percentage, color='r', linestyle='--',
+                label=f"Mean: {mean_percentage:.2f}%", linewidth=2)
     ax1.legend(fontsize=10)
     ax1.grid(axis='y', alpha=0.3)
 
-    # 2. Per-character accuracy (top 10 lowest) - from test set only
-    ax2 = fig.add_subplot(gs[0, 1])
-    chars_by_acc = sorted(char_stats_test.items(), key=lambda x: x[1]['accuracy'])
-    # Take bottom 10 (lowest accuracy)
-    bottom_10 = chars_by_acc[:10]
-    chars = [c for c, _ in bottom_10]
-    accs = [s['accuracy'] for _, s in bottom_10]
-    colors = ['#d62728' if acc < 0.8 else '#ff7f0e' for acc in accs]
-    ax2.barh(chars, accs, color=colors)
-    ax2.set_xlabel('Accuracy', fontsize=12)
-    ax2.set_ylabel('Character', fontsize=12)
-    ax2.set_title('Bottom 10 Characters by Accuracy (Test Set)', fontsize=14, weight='bold')
-    ax2.axvline(x=avg_char_accuracy_test, color='b', linestyle='--',
-                label=f"Mean: {avg_char_accuracy_test:.2%}", linewidth=2)
-    ax2.legend(fontsize=10)
-    ax2.grid(axis='x', alpha=0.3)
-    ax2.set_xlim(0, 1.05)
-
-    # Main title
-    fig.suptitle('Character-Level Analysis',
-                 fontsize=16, weight='bold', y=0.995)
+    # Reduce y-axis ticks to half
+    ax1.locator_params(axis='y', nbins=5)
 
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
     plt.close()

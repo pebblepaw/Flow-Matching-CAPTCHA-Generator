@@ -1,8 +1,8 @@
 """
-Generate confusion matrix heatmap for top 10 most common characters.
+Generate confusion matrix heatmap for top 5 most common characters.
 
 This script evaluates the trained character recognition model and generates
-a confusion matrix visualization showing the top 10 most frequently occurring
+a confusion matrix visualization showing the top 5 most frequently occurring
 characters in the test set.
 """
 
@@ -113,7 +113,7 @@ def collect_predictions(
     return all_gt_chars, all_pred_chars
 
 
-def get_top_n_classes(ground_truth: List[str], n: int = 10, most_common: bool = True) -> List[str]:
+def get_top_n_classes(ground_truth: List[str], n: int = 5, most_common: bool = True) -> List[str]:
     """
     Get the top N most or least frequent classes from ground truth labels.
 
@@ -147,7 +147,7 @@ def get_top_n_classes(ground_truth: List[str], n: int = 10, most_common: bool = 
 def get_top_n_by_accuracy(
     ground_truth: List[str],
     predictions: List[str],
-    n: int = 10,
+    n: int = 5,
     highest: bool = True
 ) -> List[str]:
     """
@@ -254,16 +254,16 @@ def plot_confusion_matrix(
     if n_classes > 20:
         # For large matrices (like 36x36), use bigger figure and smaller font
         figsize = (20, 18)
-        fontsize = 6
-        title_fontsize = 16
+        fontsize = 24
+        title_fontsize = 17
     elif n_classes > 15:
         figsize = (16, 14)
-        fontsize = 7
-        title_fontsize = 14
+        fontsize = 24
+        title_fontsize = 15
     else:
         figsize = (12, 10)
-        fontsize = 9
-        title_fontsize = 14
+        fontsize = 24
+        title_fontsize = 16
 
     # Create figure
     fig, ax = plt.subplots(figsize=figsize)
@@ -281,6 +281,13 @@ def plot_confusion_matrix(
         ylabel='True Label',
         xlabel='Predicted Label'
     )
+
+    # Set tick label font size
+    ax.tick_params(axis='both', which='major', labelsize=24)
+
+    # Set axis label font size
+    ax.xaxis.label.set_size(24)
+    ax.yaxis.label.set_size(24)
 
     # Rotate x labels
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
@@ -301,8 +308,8 @@ def plot_confusion_matrix(
                     else:
                         text = ''
                 else:
-                    # Show percentage for normalized matrix
-                    text = f'{cm_display[i, j]:.1%}\n({cm[i, j]})'
+                    # Show percentage only (no count)
+                    text = f'{cm_display[i, j]:.1%}'
             else:
                 # Show count for non-normalized matrix
                 text = f'{cm[i, j]}'
@@ -317,35 +324,35 @@ def plot_confusion_matrix(
     if title_suffix:
         title = f'Confusion Matrix - {title_suffix}'
     else:
-        title = 'Confusion Matrix - Top 10 Characters'
+        title = 'Confusion Matrix - Top 5 Characters'
     if normalize:
         title += ' (Normalized by Row)'
     ax.set_title(title, fontsize=title_fontsize, weight='bold', pad=20)
 
-    # Calculate overall accuracy for top 10
+    # Calculate overall accuracy for top 5
     correct = np.trace(cm)
     total = cm.sum()
     accuracy = correct / total if total > 0 else 0
 
     # Add accuracy text
-    fig.text(0.5, 0.02,
-             f'Accuracy on Top 10: {correct}/{total} = {accuracy:.2%}',
-             ha='center', fontsize=11, weight='bold')
+    # fig.text(0.5, 0.02,
+    #          f'Accuracy on Top 5: {correct}/{total} = {accuracy:.2%}',
+    #          ha='center', fontsize=14, weight='bold')
 
     plt.tight_layout(rect=[0, 0.03, 1, 1])
     plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
     plt.close()
 
     print(f"\nConfusion matrix saved to: {output_path}")
-    print(f"Accuracy on top 10 characters: {accuracy:.2%}")
+    print(f"Accuracy on top 5 characters: {accuracy:.2%}")
 
 
 def main(
     model_path: str = "char_recognizer.pth",
     image_dir: str = "data/raw/test",
     cache_dir: str = "data/processed/test_cache",
-    output_file: str = "confusion_matrix_top10.png",
-    top_n: int = 10,
+    output_file: str = "confusion_matrix_top5.png",
+    top_n: int = 5,
     normalize: bool = True,
     dpi: int = 120,
     generate_both: bool = False,
@@ -376,7 +383,7 @@ def main(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print("=" * 70)
-    print("Confusion Matrix Generator - Top 10 Characters")
+    print("Confusion Matrix Generator - Top 5 Characters")
     print("=" * 70)
     print(f"Device: {device}")
     print(f"Model path: {model_path}")
@@ -454,7 +461,7 @@ def main(
         plot_confusion_matrix(
             cm_high_acc, high_acc_classes, high_acc_output,
             normalize=normalize, dpi=dpi,
-            title_suffix="Top 10 Highest Accuracy Characters"
+            title_suffix="Top 5 Highest Accuracy Characters"
         )
         print()
 
@@ -477,7 +484,7 @@ def main(
         plot_confusion_matrix(
             cm_low_acc, low_acc_classes, low_acc_output,
             normalize=normalize, dpi=dpi,
-            title_suffix="Top 10 Lowest Accuracy Characters"
+            title_suffix="Top 5 Lowest Accuracy Characters"
         )
         print()
 
@@ -500,7 +507,7 @@ def main(
         plot_confusion_matrix(
             cm_most, top_classes, most_output,
             normalize=normalize, dpi=dpi,
-            title_suffix="Top 10 Most Common Characters"
+            title_suffix="Top 5 Most Common Characters"
         )
         print()
 
@@ -521,7 +528,7 @@ def main(
         plot_confusion_matrix(
             cm_least, bottom_classes, least_output,
             normalize=normalize, dpi=dpi,
-            title_suffix="Top 10 Least Common Characters"
+            title_suffix="Top 5 Least Common Characters"
         )
         print()
 
@@ -557,14 +564,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         type=str,
-        default="confusion_matrix_top10.png",
+        default="confusion_matrix_top5.png",
         help="Output filename for confusion matrix"
     )
     parser.add_argument(
         "--top-n",
         type=int,
-        default=10,
-        help="Number of top classes to include (default: 10)"
+        default=5,
+        help="Number of top classes to include (default: 5)"
     )
     parser.add_argument(
         "--no-normalize",

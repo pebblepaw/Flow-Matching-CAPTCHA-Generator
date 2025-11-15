@@ -100,43 +100,6 @@ class ColorRegionTokenizer:
         bboxes.sort(key=lambda b: b[0])
         return bboxes
 
-    def _merge_overlapping_boxes(
-        self,
-        bboxes: List[Tuple[int, int, int, int]]
-    ) -> List[Tuple[int, int, int, int]]:
-        if len(bboxes) <= 1:
-            return bboxes
-
-        merged = []
-        current = list(bboxes[0])
-
-        for box in bboxes[1:]:
-            x, y, w, h = box
-            curr_x, curr_y, curr_w, curr_h = current
-            overlap = False
-            curr_right = curr_x + curr_w
-            box_right = x + w
-
-            if not (x > curr_right or curr_x > box_right):
-                curr_bottom = curr_y + curr_h
-                box_bottom = y + h
-
-                if not (y > curr_bottom or curr_y > box_bottom):
-                    overlap = True
-
-            if overlap:
-                new_x = min(curr_x, x)
-                new_y = min(curr_y, y)
-                new_right = max(curr_right, box_right)
-                new_bottom = max(curr_bottom, box_bottom)
-                current = [new_x, new_y, new_right - new_x, new_bottom - new_y]
-            else:
-                merged.append(tuple(current))
-                current = list(box)
-
-        merged.append(tuple(current))
-        return merged
-
     def _get_dominant_color(self, image: np.ndarray, bbox: Tuple[int, int, int, int]) -> np.ndarray:
         x, y, w, h = bbox
         region = image[y:y+h, x:x+w, :]
@@ -151,10 +114,6 @@ class ColorRegionTokenizer:
         colored_pixels = region[colored_mask]
         median_color = np.median(colored_pixels, axis=0)
         return median_color
-
-    def _colors_match(self, color1: np.ndarray, color2: np.ndarray, threshold: float = 30) -> bool:
-        distance = np.linalg.norm(color1 - color2)
-        return distance < threshold
 
     def _merge_same_color_tokens(
         self,

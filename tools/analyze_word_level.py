@@ -200,71 +200,68 @@ def plot_word_analysis(
 ):
     """Create word-level analysis visualization."""
 
-    fig = plt.figure(figsize=(16, 6))
-    gs = fig.add_gridspec(1, 2, hspace=0.3, wspace=0.3)
+    # Single plot, wider figure
+    fig, ax1 = plt.subplots(figsize=(18, 6))
 
-    # 1. Word accuracy by word length
-    ax1 = fig.add_subplot(gs[0, 0])
+    # Word accuracy by word length
     lengths_sorted = sorted(length_stats.keys())
     word_accs = [length_stats[l]['word_accuracy'] for l in lengths_sorted]
 
-    bars = ax1.bar(lengths_sorted, word_accs, color='#1f77b4', alpha=0.7, edgecolor='black')
-    ax1.set_xlabel('Word Length (# of characters)', fontsize=12, labelpad=15)
-    ax1.set_ylabel('Word Accuracy', fontsize=12)
-    ax1.set_title('Word Accuracy by Word Length', fontsize=14, weight='bold')
-    ax1.grid(axis='y', alpha=0.3)
+    # Calculate overall character-level accuracy (weighted average)
+    overall_avg = word_limits['current_word_accuracy']
+    total_chars = sum(length_stats[l]['word_total'] * l for l in lengths_sorted)
+    total_correct_chars = sum(
+        length_stats[l]['word_total'] * l * length_stats[l]['avg_char_accuracy']
+        for l in lengths_sorted
+    )
+    char_accuracy = total_correct_chars / total_chars if total_chars > 0 else 0
+
+    # Calculate expected performance for each word length (char_acc^n)
+    expected_accs = [char_accuracy ** n for n in lengths_sorted]
+
+    # Draw bars
+    bars = ax1.bar(lengths_sorted, word_accs, color='#1f77b4', alpha=0.7, edgecolor='black', linewidth=1.5)
+
+    # Draw line connecting actual performance (bar tops)
+    ax1.plot(lengths_sorted, word_accs, color='#d62728', marker='o', linewidth=2.5,
+             markersize=8, linestyle='-', zorder=10, label='Actual Performance')
+
+    # Draw line connecting expected performance points
+    ax1.plot(lengths_sorted, expected_accs, color='#ff7f0e', marker='s', linewidth=2.5,
+             markersize=7, linestyle='--', zorder=10, label='Expected Performance')
+
+    ax1.set_xlabel('Word Length (# of characters)', fontsize=13, labelpad=15, fontweight='bold')
+    ax1.set_ylabel('Word Accuracy', fontsize=13, fontweight='bold')
+    ax1.set_title('Word Accuracy by Word Length (Segmentation mismatch cases not included)', fontsize=15, weight='bold', pad=15)
+    ax1.grid(axis='y', alpha=0.3, linestyle='--')
     ax1.set_ylim(0, 1.05)
     ax1.set_xticks(lengths_sorted)
 
-    # Add overall average word accuracy line
-    overall_avg = word_limits['current_word_accuracy']
-    ax1.axhline(y=overall_avg, color='r', linestyle='--',
-                label=f"Overall Avg: {overall_avg:.1%}", linewidth=2)
-    ax1.legend(fontsize=10)
+    # Add text annotation for overall average and character accuracy
+    ax1.text(0.98, 0.97,
+             f'Overall Word Accuracy: {overall_avg:.1%}\nCharacter Accuracy: {char_accuracy:.1%}',
+             transform=ax1.transAxes, fontsize=11, weight='bold',
+             verticalalignment='top', horizontalalignment='right',
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+    ax1.legend(fontsize=11, loc='lower left')
 
     # Add accuracy labels on bars
     for length, acc, bar in zip(lengths_sorted, word_accs, bars):
         height = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., height + 0.02,
-                f'{acc:.1%}', ha='center', va='bottom', fontsize=10, weight='bold')
+                f'{acc:.1%}', ha='center', va='bottom', fontsize=11, weight='bold')
         # Add sample count below x-axis label
         count = length_stats[length]['word_total']
         ax1.text(bar.get_x() + bar.get_width()/2., -0.08,
-                f'n={count}', ha='center', va='top', fontsize=9, style='italic')
+                f'n={count}', ha='center', va='top', fontsize=10, style='italic')
 
-    # 2. Theoretical limits table
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax2.axis('off')
-
-    limits_text = (
-        f"Theoretical Limits\n"
-        f"{'='*35}\n\n"
-        f"Char Acc -> Word Acc\n"
-        f"{'-'*35}\n"
-    )
-
-    for ca in [0.90, 0.92, 0.95, 0.98, 0.99, 1.00]:
-        wa = word_limits['theoretical_at_char_accuracy'][ca]
-        limits_text += f"{ca:.0%}      ->  {wa:.2%}\n"
-
-    limits_text += f"\n{'-'*35}\n"
-    limits_text += f"Current Word Acc:\n{word_limits['current_word_accuracy']:.2%}\n\n"
-    limits_text += f"To reach 95% word acc,\n"
-    limits_text += f"need ~{0.95**(1/length_dist['mean']):.1%} char acc\n\n"
-    limits_text += f"{'-'*35}\n"
-    limits_text += f"Mean word length:\n{length_dist['mean']:.2f} characters"
-
-    ax2.text(0.05, 0.95, limits_text, fontsize=11, family='monospace',
-             verticalalignment='top', transform=ax2.transAxes)
-
-    # Main title
-    fig.suptitle('Word-Level Analysis',
-                 fontsize=16, weight='bold', y=0.995)
-
+    plt.tight_layout()
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
     plt.close()
 
     print(f"\nWord-level visualization saved to: {output_file}")
+    print(f"Character accuracy: {char_accuracy:.4f} ({char_accuracy:.2%})")
 
 
 def main(
