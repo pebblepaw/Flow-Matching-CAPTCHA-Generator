@@ -23,7 +23,7 @@ class DataCleaningGUI:
         self.root.geometry("1000x700")
 
         # Data directories
-        self.data_dir = Path("/home/xplus/cs4243/data")
+        self.data_dir = Path("data")
         self.raw_dir = self.data_dir / "raw"
         self.cleaned_dir = self.data_dir / "cleaned"
         self.good_dir = self.cleaned_dir / "good"

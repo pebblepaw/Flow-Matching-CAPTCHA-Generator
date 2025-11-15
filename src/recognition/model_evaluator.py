@@ -16,10 +16,10 @@ from src.recognition.data_loader import CaptchaWordDataset
 from src.recognition.model.character_cnn import CharacterCNN
 
 
-def load_trained_model(model_path: str, device: torch.device) -> CharacterCNN:
+def load_trained_model(model_path: Path, device: torch.device) -> CharacterCNN:
     """Load the trained character recognition model from checkpoint."""
     model = CharacterCNN(input_channels=1, num_classes=36)
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(str(model_path), map_location=device)
     model.load_state_dict(checkpoint)
     model.eval()
     model = model.to(device)
@@ -58,8 +58,18 @@ def predict_word(
 
     return ''.join(predictions), confidences
 
+def get_best_model_path(model_name: str) -> Path:
+    """Get the path to the best model checkpoint."""
+    model_files = list((Path("checkpoints") / model_name).glob("best_model_*.pth"))
+    if not model_files:
+        raise FileNotFoundError(f"No trained model found in {Path('checkpoints') / model_name}")
+
+    # Sort by validation accuracy (extract from filename)
+    model_files.sort(key=lambda x: float(x.stem.split('_val_acc')[-1]), reverse=True)
+    return model_files[0]
+
 def main(
-    model_path: str = "checkpoints/character_cnn/fill_your_own.pth",
+    model_name: str,
     image_dir: str = "data/raw/test",
     cache_dir: str = "data/processed/test_cache",
 ):
@@ -67,11 +77,13 @@ def main(
     Main function to run word-level accuracy visualization.
 
     Args:
-        model_path: Path to trained model checkpoint
+        model_name: Name of the trained model
         image_dir: Directory containing CAPTCHA images
         cache_dir: Directory for caching preprocessed data
         preprocessing_method: Preprocessing method to use
     """
+    model_path = get_best_model_path(model_name)
+
     # Set random seeds
     random.seed(SEED)
     np.random.seed(SEED)
@@ -159,6 +171,7 @@ def main(
     print("=" * 70)
     print(f"Word-Level Accuracy:      {word_correct_count}/{total_words} = {100*word_correct_count/total_words:.2f}%")
     print(f"Character-Level Accuracy: {total_chars_correct}/{total_chars} = {100*total_chars_correct/total_chars:.2f}%")
+    print(f"Segmentation Accuracy:    {total_samples - failed}/{total_samples} = {100*(total_samples - failed)/total_samples:.2f}%")
     print(f"Overall (incl. failed):   {word_correct_count}/{total_samples} = {100*word_correct_count/total_samples:.2f}%")
     print("=" * 70)
     print()
@@ -167,10 +180,10 @@ def main(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Evaluate CAPTCHA recognition model")
-    parser.add_argument("--model-path", type=str, help="Path to trained model checkpoint")
+    parser.add_argument("--model-name", type=str, help="Name of the trained model")
     args = parser.parse_args()
 
-    if args.model_path is None:
-        parser.error("Model path is required")
+    if args.model_name is None:
+        parser.error("Model name is required")
 
-    main(model_path=args.model_path)
+    main(model_name=args.model_name)
