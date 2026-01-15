@@ -11,9 +11,25 @@ wheels/
 venv/
 env/
 
-# Data files
-data/raw/*
-data/processed/*
+# Dataset directories (large)
+data/
+train/
+test/
+main/
+
+# Generated outputs
+generated_captchas/
+results/
+preview_samples/
+preview_samples_*/
+training_progression/
+cs4243_progression/
+all_classes_progression/
+
+# Archive and temporary files
+archive/
+*.tar.gz
+*.zip
 
 # Model weights and checkpoints
 *.pth
@@ -21,10 +37,47 @@ data/processed/*
 *.ckpt
 models/
 
-# Visualization outputs
-pipeline_visualization.png
-prediction_results.png
-*.png
+# Cluster/deployment scripts (not needed for this repo)
+deploy_to_cluster.sh
+run_cluster_training_v2.sh
+monitor_training.sh
+monitor_generation.sh
+setup_and_transfer.sh
+wait_and_generate_cs4243.sh
+run_*.sh
+complete_workflow.sh
+setup_git.sh
+
+# Old/temporary documentation
+README_old.md
+For_Poster.md
+IMPROVEMENT_PROPOSAL.md
+MONITORING_GUIDE.md
+PRESENTATION_SCRIPT.md
+WORKFLOW_GUIDE.md
+QUICK_START_GUIDE.md
+tutorial_cluster.md
+
+# Temporary scripts and files
+cleanup_files.txt
+embeddings.java
+create_collage.py
+create_compact_montage.py
+create_comparison.py
+generate_progression.py
+generate_cs4243_progression.py
+generate_all_classes_progression.py
+process_final_samples.py
+test_improvements.py
+test_whitening.py
+
+# Large PDFs
+Instructions.pdf
+*.pdf
+
+# Python package management
+uv.lock
+pyproject.toml
 
 # OS-specific files
 .DS_Store
@@ -37,3 +90,5 @@ nul
 *.swp
 *.swo
 *~
+
+# 

@@ -82,6 +82,10 @@ This will:
 - **Classes**: 36 (0-9, A-Z)
 - **Input**: 32x32 grayscale character images
 
+### Results
+
+![Training Progression](cs4243_progression/cs4243_progression_montage.png)
+
 ## Data Format
 
 Training images should be named: `{label}-{index}.png`
