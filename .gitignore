@@ -23,7 +23,7 @@ results/
 preview_samples/
 preview_samples_*/
 training_progression/
-cs4243_progression/
+# cs4243_progression/
 all_classes_progression/
 
 # Archive and temporary files
