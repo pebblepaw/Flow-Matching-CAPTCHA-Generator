@@ -182,31 +182,18 @@ cs4243_progression_montage.png  # Visualisation of results across epochs
 
 ## Dataset Preparation
 
-Unfortunately the **CAPTCHA dataset** is not public, you may find your own relevant dataset. 
+Unfortunately the **CAPTCHA dataset** used is not public, you may find your own relevant dataset. 
 
-1. Place your raw CAPTCHAs into:
-
-   * `train/` – training CAPTCHAs
-   * `test/` – test CAPTCHAs
-
-2. Extract character images:
-
-```bash
-python3 extract_characters.py \
-    --input_dir train \
-    --output_dir data/characters
-```
-
-This creates:
+Extract your CAPTCHA characters into the following folder structure: 
 
 * `data/characters/train/` – training characters by class
 * `data/characters/test/` – test characters by class
 * 36 classes: `0–9` (digits), `a–z` (lowercase)
 
-Approx. numbers (dataset-dependent):
+Approx. numbers used for our original set-up: 
 
 * ~1.4k images per class
-* Total: 41,268 training characters, 10,305 test characters (in original setup)
+* Total: 41,268 training characters, 10,305 test characters
 
 ---
 
