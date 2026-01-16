@@ -1,0 +1,68 @@
+# # Python-generated files
+# __pycache__/
+# *.py[oc]
+# build/
+# dist/
+# wheels/
+# *.egg-info
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Dataset directories (users provide their own)
+
+
+# Generated outputs and results
+all_classes_progression/
+archive/
+batchfiles/
+cs4243_progression/
+data/
+main/
+results/
+src/
+train/
+test/
+tools/
+
+generated_captchas/
+training_progression/
+preview_samples/
+preview_samples_*/
+research_papers_for_interest/
+
+# # Model weights and checkpoints (too large, users train their own)
+# *.pth
+# *.pt
+# *.ckpt
+# models/
+# checkpoints/
+
+# # Root-level files (keeping only FlowModel/)
+# preprocess.py
+# visualize_preprocessing.py
+# visualize_segmentation_pipeline.py
+# # README.md
+
+# # OS-specific files
+.DS_Store
+# Thumbs.db
+# nul
+
+# # IDE files
+# .vscode/
+# .idea/
+# *.swp
+# *.swo
+# *~
+
+# # Python package management
+# uv.lock
+# .python-version
+# pyproject.toml
+
+# # Large documentation files
+# Instructions.pdf
+# *.pdf 
