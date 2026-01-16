@@ -72,7 +72,7 @@ Rectified flow is:
 
 ### Training Progression
 
-![Training Progression](../cs4243_progression_montage.png)
+![Training Progression](cs4243_progression_montage.png)
 
 *Visual progression of the generated "CS4243" across 8 training checkpoints*
 
@@ -175,8 +175,7 @@ data/characters/                    # Extracted character dataset (user provides
 ├── train/                          # Training characters by class (0-9, a-z)
 └── test/                           # Test characters by class
 
-cs4243_progression/                 # Training progression results
-└── cs4243_progression_compact.png  # Visualisation of results across epochs
+cs4243_progression_montage.png  # Visualisation of results across epochs
 ```
 
 ---
