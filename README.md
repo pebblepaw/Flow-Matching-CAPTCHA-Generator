@@ -6,19 +6,19 @@ This project implements a **Conditional Rectified Flow / Flow Matching** model t
 
 ## Table of Contents
 
-1. [Project Overview](#-project-overview)  
-2. [Key Features](#-key-features)  
-3. [Results Summary](#-results-summary)  
-4. [Model Architecture](#-model-architecture)  
-5. [Requirements](#-requirements)  
-6. [Installation (Local)](#-installation-local)  
-7. [Dataset Preparation](#-dataset-preparation)  
-8. [Training](#-training)  
-9. [Generating CAPTCHAs](#-generating-captchas)  
-10. [Evaluation](#-evaluation)  
-11. [Training History & V2 Improvements](#-training-history--v2-improvements)  
-12. [Expected Performance & Future Work](#-expected-performance--future-work)  
-13. [References](#-references)  
+1. [Project Overview](#project-overview)  
+2. [Key Features](#key-features)  
+3. [Results Summary](#results-summary)  
+4. [Model Architecture](#model-architecture)  
+5. [Requirements](#requirements)  
+6. [Installation (Local)](#installation-local)  
+7. [Dataset Preparation](#dataset-preparation)  
+8. [Training](#training)  
+9. [Generating CAPTCHAs](#generating-captchas)  
+10. [Evaluation](#evaluation)  
+11. [Training History & V2 Improvements](#training-history--v2-improvements)  
+12. [Expected Performance & Future Work](#expected-performance--future-work)  
+13. [References](#references)  
 
 ---
 
